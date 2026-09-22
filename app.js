@@ -128,7 +128,12 @@ function expBetween(lv, exp, toLv) {
 /* ───────────────── 状态 ───────────────── */
 const LS = 'mls_v1'
 let S = { chars: [], activeId: null, updated_at: null }
-let UI = { expUnit: localStorage.getItem('mls_unit') || 'pct', showTable: localStorage.getItem('mls_tbl') === '1' }
+let UI = {
+  expUnit: localStorage.getItem('mls_unit') || 'pct',
+  showTable: localStorage.getItem('mls_tbl') === '1',
+  region: localStorage.getItem('mls_region') || MAPS[0].region,
+  map: localStorage.getItem('mls_map') || '',
+}
 let saveTimer = null
 
 function loadLocal() {
@@ -179,7 +184,8 @@ function render() {
   const c = activeChar()
   if (!c) { S.activeId = S.chars[0].id }
   const k = compute(c)
-  app().innerHTML = charBar() + overview(c, k) + todayPanel(c, k) + planPanel(c, k) + logsPanel(c) + tablePanel(c, k)
+  app().innerHTML = charBar() + overview(c, k) + todayPanel(c, k) + timerPanel(c) + rankingPanel(c) + sessionsPanel(c) + planPanel(c, k) + logsPanel(c) + tablePanel(c, k)
+  syncTick()
 }
 
 function charBar() {
@@ -397,6 +403,20 @@ document.addEventListener('click', e => {
   const unit = t.closest('[data-unit]')
   if (unit) { UI.expUnit = unit.dataset.unit; localStorage.setItem('mls_unit', UI.expUnit); render(); return }
 
+  if (t.id === 'tm-start') return tmStart()
+  if (t.id === 'tm-mark') return tmMark()
+  if (t.id === 'tm-pause') return tmPause()
+  if (t.id === 'tm-resume') return tmResume()
+  if (t.id === 'tm-stop') return tmStop()
+
+  const ds = t.closest('[data-delsess]')
+  if (ds) {
+    e.preventDefault()
+    const c = activeChar()
+    if (confirm('删掉这条练级记录？')) { c.sessions = c.sessions.filter(x => x.id !== ds.dataset.delsess); save(); render() }
+    return
+  }
+
   if (t.id === 'n-create') return createChar()
   if (t.id === 'btn-log') return logToday()
   if (t.id === 'btn-target') return updateTarget()
@@ -409,6 +429,18 @@ document.addEventListener('click', e => {
     const c = activeChar()
     delete c.logs[dl.dataset.dellog]
     save(); render(); return
+  }
+})
+
+document.addEventListener('change', e => {
+  if (e.target.id === 'mp-region') {
+    UI.region = e.target.value; UI.map = ''
+    localStorage.setItem('mls_region', UI.region); localStorage.setItem('mls_map', '')
+    render()
+  }
+  if (e.target.id === 'mp-map') {
+    UI.map = e.target.value
+    localStorage.setItem('mls_map', UI.map)
   }
 })
 
@@ -441,6 +473,7 @@ function createChar() {
     startDate: today(), startLevel: lv, startExp: exp,
     targetLevel: tlv, targetDate: tdate,
     logs: { [today()]: { level: lv, exp } },
+    timer: null, sessions: [],
     createdAt: new Date().toISOString()
   }
   S.chars.push(c)
@@ -491,6 +524,250 @@ function delChar() {
   S.chars = S.chars.filter(x => x.id !== c.id)
   S.activeId = S.chars[0]?.id || null
   save(); render()
+}
+
+/* ───────────────── 练级计时器 ─────────────────
+   计时只累计「跑着」的时间，暂停期间不算。
+   打点存的是 { ms: 当时的有效计时, level, exp }，两点之间算一段效率。 */
+
+function regionOf(name) {
+  const g = MAPS.find(g => g.maps.some(m => m.n === name))
+  return g ? g.region : ''
+}
+function mapPicker() {
+  const reg = MAPS.find(g => g.region === UI.region) || MAPS[0]
+  const regOpts = MAPS.map(g => `<option value="${g.region}" ${g.region === reg.region ? 'selected' : ''}>${g.region}</option>`).join('')
+  const mapOpts = ['<option value="">（不填）</option>']
+    .concat(reg.maps.map(m => `<option value="${m.n}" ${m.n === UI.map ? 'selected' : ''}>${esc(m.n)}</option>`)).join('')
+  return `<div class="field" style="flex:1 1 130px"><label>地区</label>
+      <select id="mp-region">${regOpts}</select></div>
+    <div class="field" style="flex:1 1 170px"><label>现在在哪练</label>
+      <select id="mp-map">${mapOpts}</select></div>`
+}
+
+const totalTo200 = (lv, exp) => expBetween(lv, exp, 200)
+const gainBetween = (a, b) => totalTo200(a.level, a.exp) - totalTo200(b.level, b.exp)
+
+function timerMs(t) {
+  if (!t) return 0
+  return t.accumMs + (t.state === 'running' ? Date.now() - t.startedAt : 0)
+}
+
+function fmtDur(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60
+  return `${pad(h)}:${pad(m)}:${pad(ss)}`
+}
+function fmtShort(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60)
+  return h > 0 ? `${h}:${pad(m)}` : `${m}分`
+}
+// 经验/小时；带符号（怀旧服死亡会掉经验，允许为负）
+function rateOf(gain, ms) { return ms > 0 ? gain / (ms / 3600000) : 0 }
+const signed = n => (n < 0 ? '−' : '') + fmt(Math.abs(n))
+
+function segmentsOf(points) {
+  const segs = []
+  for (let i = 1; i < points.length; i++) {
+    const dt = points[i].ms - points[i - 1].ms
+    const gain = gainBetween(points[i - 1], points[i])
+    segs.push({ dt, gain, rate: rateOf(gain, dt), at: points[i].ms, level: points[i].level, map: points[i - 1].map || '' })
+  }
+  return segs
+}
+
+function chartHTML(points) {
+  const segs = segmentsOf(points)
+  if (!segs.length) return '<div class="empty">至少要两个打点才画得出图。</div>'
+  const max = Math.max(...segs.map(x => Math.abs(x.rate)), 1)
+  const hasNeg = segs.some(x => x.rate < 0)
+  const bars = segs.map(sg => {
+    const h = Math.round(Math.abs(sg.rate) / max * 100)
+    const neg = sg.rate < 0
+    return `<div class="cbar" title="${esc(sg.map || '没填地图')} · ${fmtShort(sg.dt)} 内 ${signed(sg.gain)} 经验">
+      <div class="cbar-v ${neg ? 'neg' : ''}">${signed(sg.rate)}</div>
+      <div class="cbar-pos">${neg ? '' : `<i style="height:${h}px"></i>`}</div>
+      ${hasNeg ? `<div class="cbar-neg">${neg ? `<i style="height:${h}px"></i>` : ''}</div>` : ''}
+      <div class="cbar-x">${fmtDur(sg.at).slice(0, 5)}</div>
+      <div class="cbar-m">${esc(sg.map || '—')}</div>
+    </div>`
+  }).join('')
+  return `<div class="chart"><div class="chart-bars">${bars}</div></div>
+    <div class="hint">柱高 = 那一段的经验/小时，横轴是计时走到第几分钟。${hasNeg ? '往下的是掉经验的段。' : ''}</div>`
+}
+
+function timerPanel(c) {
+  const t = c.timer
+  const state = t ? t.state : 'idle'
+  const ms = timerMs(t)
+  const pts = t ? t.points : []
+  const gain = pts.length >= 2 ? gainBetween(pts[0], pts[pts.length - 1]) : 0
+  const rate = rateOf(gain, ms)
+
+  // 输入框预填：有计时就用最后一个打点，没有就用角色当前进度
+  const seed = pts.length ? pts[pts.length - 1] : currentOf(c)
+  const cap = expAt(seed.level)
+  const unitPct = UI.expUnit === 'pct'
+  const seedVal = unitPct ? (cap > 0 ? (seed.exp / cap * 100).toFixed(2) : '0') : seed.exp
+
+  const label = { idle: '没在计时', running: '计时中', paused: '已暂停' }[state]
+  const btns = state === 'idle'
+    ? `<button class="btn primary" id="tm-start">开始</button>`
+    : state === 'running'
+      ? `<button class="btn" id="tm-mark">记一笔</button>
+         <button class="btn" id="tm-pause">暂停</button>
+         <button class="btn danger" id="tm-stop">终止</button>`
+      : `<button class="btn primary" id="tm-resume">继续</button>
+         <button class="btn" id="tm-mark">记一笔</button>
+         <button class="btn danger" id="tm-stop">终止</button>`
+
+  const live = pts.length >= 2
+    ? `<div class="stats" style="margin-top:12px">
+         <div class="stat hero"><div class="k">效率</div><div class="v">${signed(rate)}<small style="font-size:12px">/小时</small></div><div class="n">${pts.length} 个打点</div></div>
+         <div class="stat"><div class="k">这段共打</div><div class="v">${signed(gain)}</div><div class="n">${Math.round(gain).toLocaleString('en-US')}</div></div>
+       </div>
+       ${chartHTML(pts)}`
+    : (state === 'idle'
+      ? `<div class="hint" style="margin-top:8px">填好当前等级和经验，按「开始」。中途随时「记一笔」，暂停也会自动记一笔。</div>`
+      : `<div class="hint" style="margin-top:8px">已经记了起点。再「记一笔」就能算出效率了。</div>`)
+
+  return `<section class="panel">
+    <div class="panel-t">练级计时器<span class="sub">${label}</span></div>
+    <div class="clock ${state}" id="tm-clock">${fmtDur(ms)}</div>
+    <div class="row" style="margin-top:12px">
+      <div class="field" style="flex:0 0 110px"><label>当前等级</label>
+        <input type="number" id="tm-lv" min="1" max="200" value="${seed.level}"></div>
+      <div class="field" style="flex:1 1 150px"><label>本级经验${unitPct ? '（%）' : '（点）'}</label>
+        <input type="number" id="tm-exp" min="0" step="${unitPct ? '0.01' : '1'}" value="${seedVal}"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      ${mapPicker()}
+      ${btns}
+    </div>
+    ${live}
+  </section>`
+}
+
+// 把所有练级记录的段按地图汇总，算加权经验/小时
+function mapRanking(c) {
+  const acc = {}
+  for (const s of c.sessions || []) {
+    for (const sg of segmentsOf(s.points)) {
+      if (!sg.map || sg.dt <= 0) continue
+      const a = acc[sg.map] || (acc[sg.map] = { map: sg.map, ms: 0, gain: 0 })
+      a.ms += sg.dt; a.gain += sg.gain
+    }
+  }
+  return Object.values(acc).map(a => ({ ...a, rate: rateOf(a.gain, a.ms) }))
+    .sort((x, y) => y.rate - x.rate)
+}
+
+function rankingPanel(c) {
+  const rank = mapRanking(c)
+  if (rank.length < 2) return ''
+  const max = Math.max(...rank.map(r => Math.abs(r.rate)), 1)
+  const rows = rank.map(r => `<div class="rank">
+      <span class="rank-n">${esc(r.map)}</span>
+      <span class="rank-bar"><i style="width:${Math.round(Math.abs(r.rate) / max * 100)}%"></i></span>
+      <span class="rank-v ${r.rate < 0 ? 'neg' : ''}">${signed(r.rate)}/h</span>
+      <span class="hint">${fmtShort(r.ms)}</span>
+    </div>`).join('')
+  return `<section class="panel">
+    <div class="panel-t">地图效率排行<span class="sub">${esc(regionOf(rank[0].map))} · ${esc(rank[0].map)} 最快</span></div>
+    <div class="ranklist">${rows}</div>
+    <div class="hint" style="margin-top:8px">按所有练级记录里每一段的时长加权算的，打得越久的数越准。</div>
+  </section>`
+}
+
+function sessionsPanel(c) {
+  const list = (c.sessions || []).slice().reverse()
+  if (!list.length) return ''
+  const best = list.reduce((a, b) => (b.rate > a.rate ? b : a), list[0])
+  const rows = list.map(s => `<details class="more sess">
+      <summary>
+        <span class="en">${s.startedAt.slice(5, 10)} ${s.startedAt.slice(11, 16)}</span>
+        <span class="sess-r ${s.rate < 0 ? 'neg' : ''}">${signed(s.rate)}/h</span>
+        <span class="hint">${fmtShort(s.ms)} · ${signed(s.gain)}${s.note ? ' · ' + esc(s.note) : ''}</span>
+        <button class="btn tiny" data-delsess="${s.id}">删</button>
+      </summary>
+      <div style="margin-top:8px">${chartHTML(s.points)}</div>
+    </details>`).join('')
+  return `<section class="panel">
+    <div class="panel-t">练级记录<span class="sub">最好 ${signed(best.rate)}/h</span></div>
+    <div class="sesslist">${rows}</div>
+  </section>`
+}
+
+/* ── 计时器动作 ── */
+function readTimerInput() {
+  const lv = clamp(parseInt(document.getElementById('tm-lv').value, 10) || 1, 1, 200)
+  const sel = document.getElementById('mp-map')
+  return { level: lv, exp: readExpInput(lv, document.getElementById('tm-exp').value), map: sel ? sel.value : '' }
+}
+
+function tmStart() {
+  const c = activeChar()
+  const p = readTimerInput()
+  c.timer = { state: 'running', startedAt: Date.now(), accumMs: 0, points: [{ ms: 0, ...p, at: new Date().toISOString() }] }
+  save(); render()
+}
+function tmMark(silent) {
+  const c = activeChar()
+  const t = c.timer; if (!t) return
+  const p = readTimerInput()
+  t.points.push({ ms: timerMs(t), ...p, at: new Date().toISOString() })
+  if (!silent) { save(); render() }
+}
+function tmPause() {
+  const c = activeChar(); const t = c.timer; if (!t || t.state !== 'running') return
+  tmMark(true)
+  t.accumMs = timerMs(t); t.state = 'paused'
+  save(); render()
+}
+function tmResume() {
+  const c = activeChar(); const t = c.timer; if (!t || t.state !== 'paused') return
+  t.startedAt = Date.now(); t.state = 'running'
+  save(); render()
+}
+function tmStop() {
+  const c = activeChar(); const t = c.timer; if (!t) return
+  if (t.state === 'running') tmMark(true)
+  const ms = timerMs(t)
+  const pts = t.points
+  if (pts.length < 2) {
+    if (!confirm('只有一个打点，算不出效率。直接丢掉这次计时？')) return
+    c.timer = null; save(); render(); return
+  }
+  const gain = gainBetween(pts[0], pts[pts.length - 1])
+  const mapNames = [...new Set(segmentsOf(pts).map(sg => sg.map).filter(Boolean))]
+  const note = mapNames.length > 2 ? `${mapNames[0]} 等 ${mapNames.length} 张图` : mapNames.join(' / ')
+  c.sessions = c.sessions || []
+  c.sessions.push({
+    id: 's' + Date.now().toString(36),
+    startedAt: pts[0].at, endedAt: new Date().toISOString(),
+    ms, gain, rate: rateOf(gain, ms), points: pts, note
+  })
+  // 顺手把最后一个打点写成今天的打卡
+  const last = pts[pts.length - 1]
+  c.logs = c.logs || {}
+  c.logs[today()] = { level: last.level, exp: last.exp }
+  c.timer = null
+  save(); render()
+}
+
+/* ── 秒针：只改时钟文字，不整页重绘，免得输入框失焦 ── */
+let tickTimer = null
+function syncTick() {
+  clearInterval(tickTimer)
+  const c = activeChar()
+  if (!c || !c.timer || c.timer.state !== 'running') return
+  tickTimer = setInterval(() => {
+    const el = document.getElementById('tm-clock')
+    const cc = activeChar()
+    if (!el || !cc || !cc.timer) { clearInterval(tickTimer); return }
+    el.textContent = fmtDur(timerMs(cc.timer))
+  }, 1000)
 }
 
 /* ───────────────── 软密码门禁 ─────────────────
