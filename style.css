@@ -124,7 +124,7 @@ input[type=text],input[type=number],input[type=date],input[type=email],input[typ
   border:none;outline:none;padding:7px 8px;width:100%;
   box-shadow:0 0 0 3px var(--ink),inset 2px 2px 0 rgba(58,42,30,.15)}
 input:focus,select:focus{box-shadow:0 0 0 3px var(--ink),0 0 0 6px var(--gold)}
-input[type=number]{font-family:'Press Start 2P','Zpix',monospace;font-size:18px}
+input.numin{font-family:'Press Start 2P','Zpix',monospace;font-size:18px}
 
 .btn{font-family:inherit;font-size:20px;cursor:pointer;padding:10px 20px;color:var(--ink);
   background:var(--paper-2);border:none;
@@ -199,7 +199,8 @@ details.more[open]>summary::before{content:'▾ ';}
 
 
 /* ── 练级计时器 ───────────────────────────────────── */
-.clock{font-family:'Press Start 2P','Zpix',monospace;font-size:48px;text-align:center;
+.clock{position:relative;min-height:124px;display:flex;align-items:center;justify-content:center;
+  font-family:'Press Start 2P','Zpix',monospace;font-size:48px;text-align:center;
   padding:18px 8px;background:#2B1D14;color:var(--gold);
   box-shadow:0 0 0 3px var(--ink),inset 0 4px 0 rgba(0,0,0,.4);letter-spacing:.04em}
 .clock.running{color:var(--green);animation:blink 2s steps(2,end) infinite}
@@ -264,4 +265,20 @@ details.more[open]>summary::before{content:'▾ ';}
   .rank-bar{flex:1 1 60px}
   .mrow-name{flex:1 1 100%}
   .mrow .btn{margin-left:0}
+}
+
+/* ── 暂停时横在计时器上的大 ⏸ ── */
+.pausemark{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:10px;
+  background:rgba(12,7,3,.88);animation:pausepulse 1.4s steps(2,end) infinite}
+.pausemark span{display:flex;gap:26px}
+.pausemark b{display:block;width:34px;height:58px;background:var(--gold);
+  box-shadow:0 0 0 4px var(--ink), inset 0 6px 0 rgba(255,255,255,.35)}
+.pausemark em{font-style:normal;font-size:16px;color:var(--gold);letter-spacing:.06em}
+@keyframes pausepulse{0%,62%{opacity:1}63%,100%{opacity:.5}}
+@media(max-width:620px){
+  .clock{min-height:104px}
+  .pausemark span{gap:18px}
+  .pausemark b{width:26px;height:46px}
+  .pausemark em{font-size:14px}
 }

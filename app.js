@@ -271,11 +271,11 @@ function todayPanel(c, k) {
     <div class="row">
       <div class="field" style="flex:0 0 110px">
         <label>当前等级</label>
-        <input type="number" id="in-lv" min="1" max="200" value="${cur.level}">
+        <input type="text" inputmode="numeric" class="numin" id="in-lv" value="${cur.level}">
       </div>
       <div class="field" style="flex:1 1 160px">
         <label>本级经验${unitPct ? '（%）' : '（点）'}</label>
-        <input type="number" id="in-exp" min="0" step="${unitPct ? '0.01' : '1'}" value="${val}">
+        <input type="text" inputmode="decimal" class="numin" id="in-exp" value="${val}">
       </div>
       <div class="field" style="flex:0 0 auto">
         <label>单位</label>
@@ -315,7 +315,7 @@ function planPanel(c, k) {
       <div class="sep"></div>
       <div class="row">
         <div class="field"><label>计划起点日期</label><input type="date" id="in-sdate" value="${c.startDate}"></div>
-        <div class="field" style="flex:0 0 110px"><label>起点等级</label><input type="number" id="in-slv" min="1" max="200" value="${c.startLevel}"></div>
+        <div class="field" style="flex:0 0 110px"><label>起点等级</label><input type="text" inputmode="numeric" class="numin" id="in-slv" value="${c.startLevel}"></div>
         <button class="btn ghost" id="btn-start">重设起点</button>
         <button class="btn danger" id="btn-del">删除角色</button>
       </div>
@@ -388,8 +388,8 @@ function welcomeView() {
     <div class="field" style="margin-top:10px"><label>头像</label><div class="picks">${picks}</div></div>
     <div class="sep"></div>
     <div class="row">
-      <div class="field" style="flex:0 0 110px"><label>当前等级</label><input type="number" id="n-lv" min="1" max="199" value="30"></div>
-      <div class="field" style="flex:0 0 130px"><label>本级经验 %</label><input type="number" id="n-exp" min="0" max="100" step="0.01" value="0"></div>
+      <div class="field" style="flex:0 0 110px"><label>当前等级</label><input type="text" inputmode="numeric" class="numin" id="n-lv" value="30"></div>
+      <div class="field" style="flex:0 0 130px"><label>本级经验 %</label><input type="text" inputmode="decimal" class="numin" id="n-exp" value="0"></div>
       <div class="field"><label>目标等级</label><select id="n-tlv">${opts.join('')}</select></div>
       <div class="field"><label>目标日期</label><input type="date" id="n-tdate" value="${addDays(today(), 60)}"></div>
     </div>
@@ -675,17 +675,22 @@ function timerPanel(c) {
        </div>
        ${chartHTML(pts)}`
     : (state === 'idle'
-      ? `<div class="hint" style="margin-top:8px">填好当前等级和经验，按「开始」。中途随时「记一笔」，暂停也会自动记一笔。</div>`
-      : `<div class="hint" style="margin-top:8px">已经记了起点。再「记一笔」就能算出效率了。</div>`)
+      ? `<div class="hint" style="margin-top:8px">填好当前等级和经验，按「开始」。中途随时「记一笔」，暂停也会自动记一笔。开始后按 <b>空格</b> 暂停 / 继续。</div>`
+      : `<div class="hint" style="margin-top:8px">已经记了起点。再「记一笔」就能算出效率了。按 <b>空格</b> 暂停 / 继续。</div>`)
 
   return `<section class="panel">
     <div class="panel-t">练级计时器<span class="sub">${label}</span></div>
-    <div class="clock ${state}" id="tm-clock">${fmtDur(ms)}</div>
+    <div class="clock ${state}">
+      <span id="tm-time">${fmtDur(ms)}</span>
+      ${state === 'paused'
+        ? '<i class="pausemark" aria-label="已暂停"><span><b></b><b></b></span><em>暂停中 · 按空格继续</em></i>'
+        : ''}
+    </div>
     <div class="row" style="margin-top:12px">
       <div class="field" style="flex:0 0 110px"><label>当前等级</label>
-        <input type="number" id="tm-lv" min="1" max="200" value="${seed.level}"></div>
+        <input type="text" inputmode="numeric" class="numin" id="tm-lv" value="${seed.level}"></div>
       <div class="field" style="flex:1 1 150px"><label>本级经验${unitPct ? '（%）' : '（点）'}</label>
-        <input type="number" id="tm-exp" min="0" step="${unitPct ? '0.01' : '1'}" value="${seedVal}"></div>
+        <input type="text" inputmode="decimal" class="numin" id="tm-exp" value="${seedVal}"></div>
     </div>
     <div class="row" style="margin-top:8px">
       ${mapPicker()}
@@ -809,12 +814,35 @@ function syncTick() {
   const c = activeChar()
   if (!c || !c.timer || c.timer.state !== 'running') return
   tickTimer = setInterval(() => {
-    const el = document.getElementById('tm-clock')
+    const el = document.getElementById('tm-time')
     const cc = activeChar()
     if (!el || !cc || !cc.timer) { clearInterval(tickTimer); return }
     el.textContent = fmtDur(timerMs(cc.timer))
   }, 1000)
 }
+
+/* ── 数字框聚焦时光标落到末尾，方便直接退格改数 ── */
+document.addEventListener('focusin', e => {
+  const el = e.target
+  if (!el.matches || !el.matches('input.numin')) return
+  // 等浏览器自己的点击定位跑完再挪，否则会被它覆盖
+  requestAnimationFrame(() => {
+    const n = el.value.length
+    try { el.setSelectionRange(n, n) } catch (_) { /* 少数输入法下会抛，忽略 */ }
+  })
+})
+
+/* ── 空格键：暂停 / 继续 ── */
+document.addEventListener('keydown', e => {
+  if (e.code !== 'Space' && e.key !== ' ') return
+  // 在输入框、下拉、按钮里按空格是人家自己的事
+  if (e.target && e.target.closest && e.target.closest('input, select, textarea, button, [contenteditable]')) return
+  const c = activeChar()
+  if (!c || !c.timer) return
+  e.preventDefault()
+  if (c.timer.state === 'running') tmPause()
+  else if (c.timer.state === 'paused') tmResume()
+})
 
 /* ───────────────── 登录 ─────────────────
    走 Supabase Auth：密码只在输入框里存在，直接发给 Supabase 校验，
