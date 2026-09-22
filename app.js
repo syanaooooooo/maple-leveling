@@ -655,6 +655,17 @@ function segmentsOf(points) {
   for (let i = 1; i < points.length; i++) {
     const dt = points[i].ms - points[i - 1].ms
     const gain = gainBetween(points[i - 1], points[i])
+    // 时长为 0 的段（暂停期间补记的读数）并进上一段。
+    // 不并的话 rateOf 会返回 0，那点经验在效率图里就凭空消失了
+    if (dt <= 0) {
+      const prev = segs[segs.length - 1]
+      if (prev) {
+        prev.gain += gain
+        prev.rate = rateOf(prev.gain, prev.dt)
+        prev.level = points[i].level
+      }
+      continue
+    }
     segs.push({ dt, gain, rate: rateOf(gain, dt), at: points[i].ms, level: points[i].level, map: points[i - 1].map || '' })
   }
   return segs
@@ -785,7 +796,7 @@ function timerPanel(c) {
        </div>
        ${chartHTML(pts)}`
     : (state === 'idle'
-      ? `<div class="hint" style="margin-top:8px">填好当前等级和经验，按「开始」。中途随时「记一笔」，暂停也会自动记一笔。开始后按 <b>空格</b> 暂停 / 继续。</div>`
+      ? `<div class="hint" style="margin-top:8px">填好当前等级和经验，按「开始」。中途随时「记一笔」，暂停也会自动记一笔。开始后按 <b>空格</b> 暂停 / 继续。暂停中「记一笔」是修正暂停那一刻的读数，不会多出一段。</div>`
       : `<div class="hint" style="margin-top:8px">已经记了起点。再「记一笔」就能算出效率了。按 <b>空格</b> 暂停 / 继续。</div>`)
 
   return `<section class="panel">
@@ -877,7 +888,15 @@ function tmMark(silent) {
   const c = activeChar()
   const t = c.timer; if (!t) return
   const p = readTimerInput()
-  t.points.push({ ms: timerMs(t), ...p, at: new Date().toISOString() })
+  const now = timerMs(t)
+  const last = t.points[t.points.length - 1]
+  // 暂停中（或刚记完不到一秒）再记一笔，时间没走过，
+  // 这应该是「修正上一笔的读数」而不是新增一笔 —— 新增会造出一个零时长的段
+  if (last && now - last.ms < 1000) {
+    Object.assign(last, p, { ms: now, at: new Date().toISOString() })
+  } else {
+    t.points.push({ ms: now, ...p, at: new Date().toISOString() })
+  }
   if (!silent) { save(); render() }
 }
 function tmPause() {
