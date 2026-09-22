@@ -286,3 +286,33 @@ details.more[open]>summary::before{content:'▾ ';}
   .pausemark b{width:26px;height:46px}
   .pausemark em{font-size:14px}
 }
+
+/* 今日计划：等级+百分比是主角 */
+.daygoal{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;
+  padding:8px 10px;background:var(--paper-2);box-shadow:0 0 0 3px var(--ink)}
+.daygoal span{font-size:17px;color:var(--wood-d)}
+.daygoal b{font-family:'Press Start 2P','Zpix',monospace;font-size:16px;color:var(--ink)}
+.daygoal-to b{color:var(--orange)}
+.daygoal-arrow{color:var(--muted)}
+@media(max-width:620px){
+  .daygoal{gap:6px}
+  .daygoal span,.daygoal b{font-size:15px}
+}
+
+/* ── tab 切换 ─────────────────────────────────────── */
+.panel.tabs{display:flex;gap:8px;padding:8px}
+.tabbtn{flex:1 1 0;font-family:inherit;font-size:19px;padding:10px 8px;cursor:pointer;border:none;
+  background:var(--paper-2);color:var(--wood-d);
+  box-shadow:0 0 0 3px var(--ink),0 4px 0 3px rgba(58,42,30,.3);transition:transform .06s}
+.tabbtn:active{transform:translateY(2px)}
+.tabbtn.on{background:var(--orange);color:#fff;text-shadow:1px 1px 0 rgba(0,0,0,.35);
+  box-shadow:0 0 0 3px var(--ink),0 4px 0 3px rgba(58,42,30,.45),inset 0 0 0 3px rgba(255,255,255,.35)}
+.sess-lv{color:var(--wood-d);font-size:14px}
+td .rank-bar{height:14px;margin:0}
+td.neg{color:var(--red)}
+
+/* 窄屏把装饰性的条形图那列藏掉，把数字让出来 */
+@media(max-width:620px){
+  .statstable th:nth-child(3),.statstable td:nth-child(3){display:none}
+  .statstable th,.statstable td{padding:8px 6px}
+}

@@ -118,6 +118,14 @@ const mmdd = s => s ? s.slice(5).replace('-', '/') : '—'
 
 /* ───────────────── 经验计算 ───────────────── */
 const expAt = lv => EXP[lv] || 0
+// 从 (lv, exp) 再打 gain 经验之后落在哪一级的百分之几
+function advance(lv, exp, gain) {
+  let L = lv, e = exp + Math.max(0, gain)
+  while (L < 200 && e >= expAt(L)) { e -= expAt(L); L++ }
+  return { level: L, exp: L >= 200 ? 0 : e }
+}
+// 「Lv.44 · 30.15%」这种写法 —— 游戏里就是这么显示的，比绝对经验值好对照
+const fmtPos = p => `Lv.${p.level} · ${(expAt(p.level) > 0 ? p.exp / expAt(p.level) * 100 : 0).toFixed(2)}%`
 function expBetween(lv, exp, toLv) {
   if (toLv <= lv) return 0
   let t = Math.max(0, expAt(lv) - exp)
@@ -134,6 +142,7 @@ let UI = {
   showTable: localStorage.getItem('mls_tbl') === '1',
   region: localStorage.getItem('mls_region') || MAPS[0].region,
   map: localStorage.getItem('mls_map') || '',
+  tab: localStorage.getItem('mls_tab') || 'plan',
 }
 let saveTimer = null
 
@@ -207,20 +216,35 @@ function compute(c) {
   const remainAtDayStart = expBetween(dayFrom.level, dayFrom.exp, c.targetLevel)
   const todayNeed = remainAtDayStart / Math.max(1, daysLeft)
   const todayPct = todayNeed > 0 ? todayGain / todayNeed * 100 : (todayGain > 0 ? 100 : 0)
+  // 今天该升到哪：从今天开始的位置往前推 todayNeed 经验
+  const dayGoalPos = advance(dayFrom.level, dayFrom.exp, todayNeed)
+  const dayNowPos = { level: dayNow.level, exp: dayNow.exp }
 
   return { cur, totalPlan, remain, done, pct, totalDays, elapsed, daysLeft, dailyPlan, dailyNeed,
-           aheadDays, pace, etaDate, finished, lvPerDay, todayGain, todayNeed, todayPct }
+           aheadDays, pace, etaDate, finished, lvPerDay, todayGain, todayNeed, todayPct,
+           dayGoalPos, dayNowPos }
 }
 
 /* ───────────────── 渲染 ───────────────── */
 const app = () => document.getElementById('app')
+
+function tabBar() {
+  const t = UI.tab === 'log' ? 'log' : 'plan'
+  return `<section class="panel tabs">
+    <button class="tabbtn ${t === 'plan' ? 'on' : ''}" data-tab="plan">计划</button>
+    <button class="tabbtn ${t === 'log' ? 'on' : ''}" data-tab="log">效率记录</button>
+  </section>`
+}
 
 function render() {
   if (!S.chars.length) { app().innerHTML = recoverBanner() + welcomeView(); return }
   const c = activeChar()
   if (!c) { S.activeId = S.chars[0].id }
   const k = compute(c)
-  app().innerHTML = charBar() + overview(c, k) + todayPanel(c, k) + timerPanel(c) + rankingPanel(c) + sessionsPanel(c) + planPanel(c, k) + logsPanel(c) + tablePanel(c, k)
+  const view = UI.tab === 'log'
+    ? statsPanel(c) + sessionsPanel(c)
+    : overview(c, k) + todayPanel(c, k) + timerPanel(c) + planPanel(c, k) + logsPanel(c) + tablePanel(c, k)
+  app().innerHTML = charBar() + tabBar() + view
   syncTick()
 }
 
@@ -292,6 +316,11 @@ function overview(c, k) {
     <div class="bar day ${k.todayPct >= 100 ? 'over' : ''}">
       <span style="width:${Math.min(100, k.todayPct).toFixed(1)}%"></span>
       <em class="en">${k.todayPct.toFixed(0)}%</em>
+    </div>
+    <div class="daygoal">
+      <span class="daygoal-now">现在 <b>${fmtPos(k.dayNowPos)}</b></span>
+      <span class="daygoal-arrow">→</span>
+      <span class="daygoal-to">今天要到 <b>${fmtPos(k.dayGoalPos)}</b></span>
     </div>
     <div class="hint" style="margin-top:6px">今天打了 ${fmt(k.todayGain)} / 目标 ${fmt(k.todayNeed)} 经验${
       k.todayPct >= 100
@@ -474,6 +503,14 @@ document.addEventListener('click', e => {
   const t = e.target
   const pick = t.closest('[data-pick]')
   if (pick) { S.activeId = pick.dataset.pick; creating = false; save(); render(); return }
+
+  const tb = t.closest('[data-tab]')
+  if (tb) {
+    UI.tab = tb.dataset.tab
+    localStorage.setItem('mls_tab', UI.tab)
+    render()
+    return
+  }
 
   if (t.id === 'manage-on') { managing = true; render(); return }
   if (t.id === 'manage-off') { managing = false; render(); return }
@@ -715,7 +752,8 @@ function segmentsOf(points) {
       }
       continue
     }
-    segs.push({ dt, gain, rate: rateOf(gain, dt), at: points[i].ms, level: points[i].level, map: points[i - 1].map || '' })
+    segs.push({ dt, gain, rate: rateOf(gain, dt), at: points[i].ms,
+                fromLevel: points[i - 1].level, level: points[i].level, map: points[i - 1].map || '' })
   }
   return segs
 }
@@ -870,34 +908,46 @@ function timerPanel(c) {
   </section>`
 }
 
-// 把所有练级记录的段按地图汇总，算加权经验/小时
-function mapRanking(c) {
+// 效率记录的主键是「等级 + 地图」：同一级在同一张图上打的所有段，合起来算
+function levelMapStats(c) {
   const acc = {}
   for (const s of c.sessions || []) {
     for (const sg of segmentsOf(s.points)) {
-      if (!sg.map || sg.dt <= 0) continue
-      const a = acc[sg.map] || (acc[sg.map] = { map: sg.map, ms: 0, gain: 0 })
-      a.ms += sg.dt; a.gain += sg.gain
+      if (sg.dt <= 0) continue
+      const map = sg.map || '（没填地图）'
+      const key = sg.fromLevel + '\u0000' + map
+      const a = acc[key] || (acc[key] = { level: sg.fromLevel, map, ms: 0, gain: 0, segs: 0 })
+      a.ms += sg.dt; a.gain += sg.gain; a.segs++
     }
   }
-  return Object.values(acc).map(a => ({ ...a, rate: rateOf(a.gain, a.ms) }))
-    .sort((x, y) => y.rate - x.rate)
+  // 等级高的在上；同一级按经验收入多的在上
+  return Object.values(acc)
+    .map(a => ({ ...a, rate: rateOf(a.gain, a.ms) }))
+    .sort((x, y) => y.level - x.level || y.gain - x.gain)
 }
 
-function rankingPanel(c) {
-  const rank = mapRanking(c)
-  if (rank.length < 2) return ''
-  const max = Math.max(...rank.map(r => Math.abs(r.rate)), 1)
-  const rows = rank.map(r => `<div class="rank">
-      <span class="rank-n">${esc(r.map)}</span>
-      <span class="rank-bar"><i style="width:${Math.round(Math.abs(r.rate) / max * 100)}%"></i></span>
-      <span class="rank-v ${r.rate < 0 ? 'neg' : ''}">${signed(r.rate)}/h</span>
-      <span class="hint">${fmtShort(r.ms)}</span>
-    </div>`).join('')
+function statsPanel(c) {
+  const rows = levelMapStats(c)
+  if (!rows.length) {
+    return `<section class="panel"><div class="panel-t">效率记录</div>
+      <div class="empty">还没有练级记录。用计时器练一轮、按「终止」存档之后，这里就会按「等级 + 地图」汇总出来。</div></section>`
+  }
+  const max = Math.max(...rows.map(r => Math.abs(r.rate)), 1)
+  const body = rows.map(r => `<tr>
+      <td class="lv">Lv.${r.level}</td>
+      <td style="text-align:left">${esc(r.map)}<div class="hint" style="font-size:13px">${esc(regionOf(r.map) || '—')}</div></td>
+      <td><div class="rank-bar" style="min-width:60px"><i style="width:${Math.round(Math.abs(r.rate) / max * 100)}%"></i></div></td>
+      <td class="en ${r.rate < 0 ? 'neg' : ''}">${signed(r.rate)}/h</td>
+      <td class="en">${signed(r.gain)}</td>
+      <td class="en">${fmtShort(r.ms)}</td>
+    </tr>`).join('')
   return `<section class="panel">
-    <div class="panel-t">地图效率排行<span class="sub">${esc(regionOf(rank[0].map))} · ${esc(rank[0].map)} 最快</span></div>
-    <div class="ranklist">${rows}</div>
-    <div class="hint" style="margin-top:8px">按所有练级记录里每一段的时长加权算的，打得越久的数越准。</div>
+    <div class="panel-t">效率记录<span class="sub">${rows.length} 个「等级 + 地图」组合</span></div>
+    <div class="tablewrap"><table class="statstable">
+      <thead><tr><th>等级</th><th style="text-align:left">地图</th><th>效率</th><th>经验/小时</th><th>累计经验</th><th>时长</th></tr></thead>
+      <tbody>${body}</tbody>
+    </table></div>
+    <div class="hint" style="margin-top:8px">同一级在同一张图上的所有练级段合并算，按时长加权。等级高的排在上面，同一级按累计经验多的在上。</div>
   </section>`
 }
 
@@ -907,6 +957,7 @@ function sessionsPanel(c) {
   const best = list.reduce((a, b) => (b.rate > a.rate ? b : a), list[0])
   const rows = list.map(s => `<details class="more sess">
       <summary>
+        <span class="en sess-lv">Lv.${s.points[0].level}${s.points[s.points.length - 1].level !== s.points[0].level ? '→' + s.points[s.points.length - 1].level : ''}</span>
         <span class="en">${s.startedAt.slice(5, 10)} ${s.startedAt.slice(11, 16)}</span>
         <span class="sess-r ${s.rate < 0 ? 'neg' : ''}">${signed(s.rate)}/h</span>
         <span class="hint">${fmtShort(s.ms)} · ${signed(s.gain)}${s.note ? ' · ' + esc(s.note) : ''}</span>
