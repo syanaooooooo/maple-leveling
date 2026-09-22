@@ -118,6 +118,22 @@ const mmdd = s => s ? s.slice(5).replace('-', '/') : '—'
 
 /* ───────────────── 经验计算 ───────────────── */
 const expAt = lv => EXP[lv] || 0
+// 「浮点等级」：Lv.43 打了 98% 就是 43.98。整套计划的算术都以它为单位
+const levelFloat = (lv, exp) => lv + (expAt(lv) > 0 ? Math.min(1, exp / expAt(lv)) : 0)
+
+// 从 (lv, exp) 往前推 n 级（n 可以是小数）。跨级时余下的零头按新等级的经验量算 ——
+// 「一级」在这里是个单位，不管这一级本身要多少经验
+function advanceLevels(lv, exp, n) {
+  let L = lv
+  let frac = (expAt(L) > 0 ? exp / expAt(L) : 0) + Math.max(0, n)
+  while (L < 200 && frac >= 1) { frac -= 1; L++ }
+  return { level: L, exp: L >= 200 ? 0 : Math.round(frac * expAt(L)) }
+}
+
+// 从位置 a 打到位置 b 需要多少经验
+const expFromTo = (a, b) =>
+  Math.max(0, expBetween(a.level, a.exp, 200) - expBetween(b.level, b.exp, 200))
+
 // 从 (lv, exp) 再打 gain 经验之后落在哪一级的百分之几
 function advance(lv, exp, gain) {
   let L = lv, e = exp + Math.max(0, gain)
@@ -192,14 +208,27 @@ function compute(c) {
   const totalDays = Math.max(1, diffDays(c.startDate, c.targetDate))
   const elapsed = clamp(diffDays(c.startDate, t), 0, 100000)
   const daysLeft = diffDays(t, c.targetDate)
-  const dailyPlan = totalPlan / totalDays
-  const dailyNeed = daysLeft > 0 ? remain / daysLeft : remain
-  const expected = Math.min(totalPlan, dailyPlan * elapsed)
-  const aheadDays = dailyPlan > 0 ? (done - expected) / dailyPlan : 0
-  const pace = elapsed > 0 ? done / elapsed : 0
-  const etaDate = (pace > 0 && remain > 0) ? addDays(t, Math.ceil(remain / pace)) : null
+
+  // ── 计划以「级数」为单位，不是经验 ──
+  // 等级越高每只怪给的经验越多，所以固定级数 ≈ 固定练级时间，固定经验不是
+  const startLF = levelFloat(c.startLevel, c.startExp)
+  const curLF = levelFloat(cur.level, cur.exp)
+  const levelsTotal = Math.max(0, c.targetLevel - startLF)
+  const levelsDone = Math.max(0, curLF - startLF)
+  const levelsLeft = Math.max(0, c.targetLevel - curLF)
+
+  const lvPerDayPlan = levelsTotal / totalDays                        // 原计划每天升几级
+  const lvPerDay = daysLeft > 0 ? levelsLeft / daysLeft : levelsLeft  // 现在还得每天升几级
+  // 换算成经验只是为了显示：从当前位置往前推 lvPerDay 级要多少经验
+  const dailyNeed = expFromTo(cur, advanceLevels(cur.level, cur.exp, lvPerDay))
+  const dailyPlan = totalDays > 0 ? totalPlan / totalDays : 0         // 旧口径，只在文案里提一嘴
+
+  const expectedLevels = Math.min(levelsTotal, lvPerDayPlan * elapsed)
+  const aheadDays = lvPerDayPlan > 0 ? (levelsDone - expectedLevels) / lvPerDayPlan : 0
+  const paceLevels = elapsed > 0 ? levelsDone / elapsed : 0
+  const etaDate = (paceLevels > 0 && levelsLeft > 0)
+    ? addDays(t, Math.ceil(levelsLeft / paceLevels)) : null
   const finished = remain <= 0
-  const lvPerDay = expAt(cur.level) > 0 ? dailyNeed / expAt(cur.level) : 0
 
   // ── 今日 ──
   // 今天开始时的位置：今天之前最后一条打卡，没有就用计划起点
@@ -212,16 +241,17 @@ function compute(c) {
   if (tp && expBetween(tp.level, tp.exp, 200) < expBetween(dayNow.level, dayNow.exp, 200)) dayNow = tp
   const todayGain = Math.max(0,
     expBetween(dayFrom.level, dayFrom.exp, 200) - expBetween(dayNow.level, dayNow.exp, 200))
-  // 今日目标用「今天开始时的剩余」算，一天之内不会因为你打了而缩水
-  const remainAtDayStart = expBetween(dayFrom.level, dayFrom.exp, c.targetLevel)
-  const todayNeed = remainAtDayStart / Math.max(1, daysLeft)
-  const todayPct = todayNeed > 0 ? todayGain / todayNeed * 100 : (todayGain > 0 ? 100 : 0)
-  // 今天该升到哪：从今天开始的位置往前推 todayNeed 经验
-  const dayGoalPos = advance(dayFrom.level, dayFrom.exp, todayNeed)
+  // 今日目标用「今天开始时的位置」算，一天之内不会因为你打了而缩水
+  const dayFromLF = levelFloat(dayFrom.level, dayFrom.exp)
+  const todayLevels = Math.max(0, c.targetLevel - dayFromLF) / Math.max(1, daysLeft)
+  const dayGoalPos = advanceLevels(dayFrom.level, dayFrom.exp, todayLevels)
   const dayNowPos = { level: dayNow.level, exp: dayNow.exp }
+  const todayNeed = expFromTo(dayFrom, dayGoalPos)
+  const todayPct = todayNeed > 0 ? todayGain / todayNeed * 100 : (todayGain > 0 ? 100 : 0)
 
   return { cur, totalPlan, remain, done, pct, totalDays, elapsed, daysLeft, dailyPlan, dailyNeed,
-           aheadDays, pace, etaDate, finished, lvPerDay, todayGain, todayNeed, todayPct,
+           aheadDays, paceLevels, etaDate, finished, lvPerDay, lvPerDayPlan,
+           levelsTotal, levelsDone, levelsLeft, todayGain, todayNeed, todayPct, todayLevels,
            dayGoalPos, dayNowPos }
 }
 
@@ -293,9 +323,11 @@ function overview(c, k) {
   else if (k.aheadDays <= -0.5) badge = `<span class="badge behind">落后 ${(-k.aheadDays).toFixed(1)} 天</span>`
   else badge = `<span class="badge ontime">刚好跟上计划</span>`
 
-  const lvText = k.lvPerDay >= 1
-    ? `≈ ${k.lvPerDay.toFixed(1)} 级/天（按 Lv.${k.cur.level}）`
-    : (k.lvPerDay > 0 ? `≈ ${(1 / k.lvPerDay).toFixed(1)} 天升 1 级` : '—')
+  // 每天要打一级的百分之多少 —— 这是计划的真正单位
+  const dayPctText = (k.lvPerDay * 100).toFixed(1) + '%'
+  const lvText = k.lvPerDay > 0
+    ? `≈ ${(1 / k.lvPerDay).toFixed(1)} 天升 1 级 · 按 Lv.${k.cur.level} 约 ${fmt(k.dailyNeed)} 经验`
+    : '—'
 
   const curPct = expAt(k.cur.level) > 0 ? (k.cur.exp / expAt(k.cur.level) * 100) : 0
 
@@ -310,7 +342,7 @@ function overview(c, k) {
       ${badge}
     </div>
     <div class="bar"><span style="width:${k.pct.toFixed(2)}%"></span><em class="en">${k.pct.toFixed(1)}%</em></div>
-    <div class="hint" style="margin-top:6px">已打 ${fmt(k.done)} / 共 ${fmt(k.totalPlan)} 经验 · 全程平均每天要升 ${k.daysLeft > 0 ? ((c.targetLevel - k.cur.level) / k.daysLeft).toFixed(2) : '—'} 级</div>
+    <div class="hint" style="margin-top:6px">已升 ${k.levelsDone.toFixed(2)} 级 / 共 ${k.levelsTotal.toFixed(2)} 级 · 原计划每天 ${(k.lvPerDayPlan * 100).toFixed(1)}% · 已打 ${fmt(k.done)} 经验</div>
     ${k.finished ? '' : `
     <div class="daybar-t">今日计划</div>
     <div class="bar day ${k.todayPct >= 100 ? 'over' : ''}">
@@ -322,15 +354,15 @@ function overview(c, k) {
       <span class="daygoal-arrow">→</span>
       <span class="daygoal-to">今天要到 <b>${fmtPos(k.dayGoalPos)}</b></span>
     </div>
-    <div class="hint" style="margin-top:6px">今天打了 ${fmt(k.todayGain)} / 目标 ${fmt(k.todayNeed)} 经验${
+    <div class="hint" style="margin-top:6px">今天要升 <b>${(k.todayLevels * 100).toFixed(1)}%</b> 一级（约 ${fmt(k.todayNeed)} 经验），已打 ${fmt(k.todayGain)}${
       k.todayPct >= 100
         ? ` · <b style="color:var(--green-d)">已达标，超出 ${fmt(k.todayGain - k.todayNeed)}</b>`
         : ` · 还差 ${fmt(Math.max(0, k.todayNeed - k.todayGain))}`}</div>`}
     <div class="stats">
-      <div class="stat hero"><div class="k">每天需要</div><div class="v">${fmt(k.dailyNeed)}</div><div class="n">${lvText}</div></div>
+      <div class="stat hero"><div class="k">每天要打</div><div class="v">${dayPctText}<small style="font-size:13px"> 一级</small></div><div class="n">${lvText}</div></div>
       <div class="stat"><div class="k">剩余经验</div><div class="v">${fmt(k.remain)}</div><div class="n">${full(k.remain)}</div></div>
       <div class="stat"><div class="k">剩余天数</div><div class="v en">${k.daysLeft > 0 ? k.daysLeft : (k.daysLeft === 0 ? '今天' : '超时')}</div><div class="n">目标 ${c.targetDate}</div></div>
-      <div class="stat"><div class="k">按当前速度</div><div class="v">${k.etaDate ? mmdd(k.etaDate) : '—'}</div><div class="n">${k.etaDate ? '预计 ' + k.etaDate + ' 达成' : '还没有打卡数据'}</div></div>
+      <div class="stat"><div class="k">按当前速度</div><div class="v">${k.etaDate ? mmdd(k.etaDate) : '—'}</div><div class="n">${k.etaDate ? '预计 ' + k.etaDate + ' 达成' : '还没有打卡数据'}${k.paceLevels > 0 ? ` · 实际每天 ${(k.paceLevels * 100).toFixed(1)}%` : ''}</div></div>
     </div>
   </section>`
 }
@@ -377,7 +409,7 @@ function planPanel(c, k) {
       <div class="field"><label>目标日期</label><input type="date" id="in-tdate" value="${c.targetDate}"></div>
       <button class="btn primary" id="btn-target">更新目标</button>
     </div>
-    <div class="hint" style="margin-top:8px">原计划日均 <b class="en">${fmt(k.dailyPlan)}</b> 经验 · 计划总长 <b class="en">${k.totalDays}</b> 天 · 已过 <b class="en">${k.elapsed}</b> 天</div>
+    <div class="hint" style="margin-top:8px">原计划每天升 <b class="en">${(k.lvPerDayPlan * 100).toFixed(1)}%</b> 一级 · 计划总长 <b class="en">${k.totalDays}</b> 天 · 已过 <b class="en">${k.elapsed}</b> 天</div>
     <div class="sep"></div>
     <details class="more">
       <summary>角色设置</summary>
@@ -426,10 +458,12 @@ function logsPanel(c) {
 function tablePanel(c, k) {
   if (k.finished) return ''
   let rows = '', cum = 0
+  const curLF = levelFloat(k.cur.level, k.cur.exp)
   for (let l = k.cur.level; l < c.targetLevel; l++) {
     const need = l === k.cur.level ? Math.max(0, expAt(l) - k.cur.exp) : expAt(l)
     cum += need
-    const eta = k.dailyNeed > 0 ? addDays(today(), Math.ceil(cum / k.dailyNeed)) : '—'
+    // 到 l+1 级要升多少级 ÷ 每天升几级 = 还要几天
+    const eta = k.lvPerDay > 0 ? addDays(today(), Math.ceil((l + 1 - curLF) / k.lvPerDay)) : '—'
     rows += `<tr class="${l === k.cur.level ? 'mark' : ''}">
       <td class="lv">Lv.${l} → ${l + 1}</td>
       <td class="en">${full(need)}</td>
@@ -438,7 +472,7 @@ function tablePanel(c, k) {
     </tr>`
   }
   return `<section class="panel">
-    <div class="panel-t">升级明细<span class="sub">按每天 ${fmt(k.dailyNeed)} 经验推算</span></div>
+    <div class="panel-t">升级明细<span class="sub">按每天升 ${(k.lvPerDay * 100).toFixed(1)}% 一级推算</span></div>
     <details class="more" id="tbl" ${UI.showTable ? 'open' : ''}>
       <summary>展开每一级需要多少经验 / 预计哪天到</summary>
       <div class="tablewrap" style="margin-top:8px"><table>
