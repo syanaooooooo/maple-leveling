@@ -189,6 +189,7 @@ function render() {
 }
 
 function charBar() {
+  if (managing) return manageBar()
   const chips = S.chars.map(c => {
     const cur = currentOf(c)
     return `<div class="chip ${c.id === S.activeId ? 'on' : ''}" data-pick="${c.id}">
@@ -197,8 +198,30 @@ function charBar() {
     </div>`
   }).join('')
   return `<section class="panel">
-    <div class="panel-t">我的角色<span class="sub">${S.chars.length} 个</span></div>
+    <div class="panel-t">我的角色<span class="sub">${S.chars.length} 个</span>
+      <button class="btn tiny" id="manage-on" style="margin-left:8px">管理</button></div>
     <div class="chars">${chips}<div class="chip add" data-new="1">＋ 新角色</div></div>
+  </section>`
+}
+
+// 管理模式：列表形态，每行能改名、删除，看得见各自的进度
+function manageBar() {
+  const rows = S.chars.map(c => {
+    const cur = currentOf(c)
+    const k = compute(c)
+    return `<div class="mrow">
+      <span class="mrow-s">${spriteSVG(c.sprite)}</span>
+      <input type="text" class="mrow-name" data-rename="${c.id}" value="${esc(c.name)}">
+      <span class="mrow-i en">Lv.${cur.level} → ${c.targetLevel}</span>
+      <span class="mrow-i hint">${k.pct.toFixed(0)}% · ${(c.sessions || []).length} 次练级</span>
+      <button class="btn tiny danger" data-del="${c.id}">删除</button>
+    </div>`
+  }).join('')
+  return `<section class="panel">
+    <div class="panel-t">管理角色<span class="sub">${S.chars.length} 个</span>
+      <button class="btn tiny" id="manage-off" style="margin-left:8px">完成</button></div>
+    <div class="mlist">${rows}</div>
+    <div class="hint" style="margin-top:10px">改完名字点别处就存上了。删除会连着这个角色的打卡和练级记录一起没掉，不能撤销。</div>
   </section>`
 }
 
@@ -221,8 +244,8 @@ function overview(c, k) {
     <div class="row" style="align-items:center;gap:12px;margin-bottom:10px">
       <div style="width:46px;flex:none">${spriteSVG(c.sprite)}</div>
       <div style="flex:1 1 auto;min-width:0">
-        <div style="font-size:16px">${esc(c.name)}${c.job ? ` <span class="hint">${esc(c.job)}</span>` : ''}</div>
-        <div class="en" style="font-size:12px;color:var(--wood-d)">Lv.${k.cur.level} · 本级 ${curPct.toFixed(2)}%</div>
+        <div style="font-size:24px">${esc(c.name)}${c.job ? ` <span class="hint">${esc(c.job)}</span>` : ''}</div>
+        <div class="en" style="font-size:18px;color:var(--wood-d)">Lv.${k.cur.level} · 本级 ${curPct.toFixed(2)}%</div>
       </div>
       ${badge}
     </div>
@@ -381,13 +404,28 @@ function welcomeView() {
 /* ───────────────── 交互 ───────────────── */
 let newSprite = SPRITE_KEYS[0]
 let creating = false
+let managing = false
 
 document.addEventListener('click', e => {
   const t = e.target
   const pick = t.closest('[data-pick]')
   if (pick) { S.activeId = pick.dataset.pick; creating = false; save(); render(); return }
 
-  if (t.closest('[data-new]')) { creating = true; newSprite = SPRITE_KEYS[0]; app().innerHTML = welcomeView(); return }
+  if (t.id === 'manage-on') { managing = true; render(); return }
+  if (t.id === 'manage-off') { managing = false; render(); return }
+
+  const dc = t.closest('[data-del]')
+  if (dc) {
+    const c = S.chars.find(x => x.id === dc.dataset.del)
+    if (!c) return
+    if (!confirm(`删除角色「${c.name}」？ta 的计划、打卡和 ${(c.sessions || []).length} 次练级记录都会一起没掉，不能撤销。`)) return
+    S.chars = S.chars.filter(x => x.id !== c.id)
+    if (S.activeId === c.id) S.activeId = S.chars[0]?.id || null
+    if (!S.chars.length) managing = false
+    save(); render(); return
+  }
+
+  if (t.closest('[data-new]')) { creating = true; managing = false; newSprite = SPRITE_KEYS[0]; app().innerHTML = welcomeView(); return }
   if (t.id === 'n-cancel') { creating = false; render(); return }
 
   const ns = t.closest('[data-nsprite]')
@@ -433,6 +471,14 @@ document.addEventListener('click', e => {
 })
 
 document.addEventListener('change', e => {
+  const rn = e.target.closest ? e.target.closest('[data-rename]') : null
+  if (rn) {
+    const c = S.chars.find(x => x.id === rn.dataset.rename)
+    const v = rn.value.trim()
+    if (c && v && v !== c.name) { c.name = v; save() }
+    else if (c) rn.value = c.name
+    return
+  }
   if (e.target.id === 'mp-region') {
     UI.region = e.target.value; UI.map = ''
     localStorage.setItem('mls_region', UI.region); localStorage.setItem('mls_map', '')
@@ -624,7 +670,7 @@ function timerPanel(c) {
 
   const live = pts.length >= 2
     ? `<div class="stats" style="margin-top:12px">
-         <div class="stat hero"><div class="k">效率</div><div class="v">${signed(rate)}<small style="font-size:12px">/小时</small></div><div class="n">${pts.length} 个打点</div></div>
+         <div class="stat hero"><div class="k">效率</div><div class="v">${signed(rate)}<small style="font-size:18px">/小时</small></div><div class="n">${pts.length} 个打点</div></div>
          <div class="stat"><div class="k">这段共打</div><div class="v">${signed(gain)}</div><div class="n">${Math.round(gain).toLocaleString('en-US')}</div></div>
        </div>
        ${chartHTML(pts)}`
