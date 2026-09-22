@@ -25,7 +25,7 @@
 html{-webkit-text-size-adjust:100%}
 body{
   font-family:'Zpix','Press Start 2P',ui-monospace,monospace;
-  font-size:14px; line-height:1.9;
+  font-size:21px; line-height:1.9;
   color:var(--ink);
   background:var(--sky);
   min-height:100vh;
@@ -49,31 +49,31 @@ body{
 .c3{top:420px;left:14%;transform:scale(.8);opacity:.6}
 
 /* ── 顶栏 ─────────────────────────────────────────── */
-.topbar{max-width:860px;margin:0 auto;padding:22px 16px 10px;
+.topbar{max-width:1060px;margin:0 auto;padding:22px 16px 10px;
   display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.logo{font-size:20px;letter-spacing:.08em;
+.logo{font-size:30px;letter-spacing:.08em;
   color:var(--paper);
   text-shadow:2px 0 var(--ink),-2px 0 var(--ink),0 2px var(--ink),0 -2px var(--ink),
               2px 2px var(--ink),-2px -2px var(--ink),2px -2px var(--ink),-2px 2px var(--ink),
               0 5px 0 var(--wood-d)}
-.sync{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink);
+.sync{display:flex;align-items:center;gap:6px;font-size:16px;color:var(--ink);
   background:var(--paper);padding:3px 9px;box-shadow:0 0 0 2px var(--ink)}
 .sync i{width:7px;height:7px;background:var(--muted);display:block}
 .sync.ok i{background:var(--green)}
 .sync.busy i{background:var(--gold)}
 .sync.err i{background:var(--red)}
 
-main{max-width:860px;margin:0 auto;padding:0 16px;display:flex;flex-direction:column;gap:16px}
-.foot{max-width:860px;margin:22px auto 0;padding:0 16px;font-size:11px;color:#4C6B77;text-align:center}
+main{max-width:1060px;margin:0 auto;padding:0 16px;display:flex;flex-direction:column;gap:16px}
+.foot{max-width:1060px;margin:22px auto 0;padding:0 16px;font-size:16px;color:#4C6B77;text-align:center}
 
 /* ── 面板 ─────────────────────────────────────────── */
 .panel{background:var(--paper);padding:14px;position:relative;
   box-shadow:0 0 0 3px var(--ink), 0 6px 0 3px rgba(58,42,30,.35), inset 0 0 0 3px #fff}
-.panel-t{font-size:13px;letter-spacing:.06em;color:var(--wood-d);
+.panel-t{font-size:20px;letter-spacing:.06em;color:var(--wood-d);
   display:flex;align-items:center;gap:8px;margin-bottom:10px}
 .panel-t::before{content:'';width:8px;height:8px;background:var(--orange);
   box-shadow:0 0 0 2px var(--ink);flex:none}
-.panel-t .sub{margin-left:auto;font-size:11px;color:var(--muted);letter-spacing:0}
+.panel-t .sub{margin-left:auto;font-size:16px;color:var(--muted);letter-spacing:0}
 
 /* ── 角色条 ───────────────────────────────────────── */
 .chars{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 10px}
@@ -82,33 +82,33 @@ main{max-width:860px;margin:0 auto;padding:0 16px;display:flex;flex-direction:co
   transition:transform .06s}
 .chip:active{transform:translateY(2px)}
 .chip.on{background:var(--gold);box-shadow:0 0 0 3px var(--ink),0 4px 0 3px rgba(58,42,30,.45),inset 0 0 0 3px #fff}
-.chip svg{width:26px;height:26px;flex:none}
-.chip b{font-size:13px;font-weight:normal;display:block;line-height:1.3}
-.chip small{font-size:10px;color:var(--wood-d);display:block;line-height:1.3}
-.chip.add{background:var(--paper);color:var(--wood-d);font-size:12px;padding:7px 14px}
+.chip svg{width:34px;height:34px;flex:none}
+.chip b{font-size:20px;font-weight:normal;display:block;line-height:1.3}
+.chip small{font-size:15px;color:var(--wood-d);display:block;line-height:1.3}
+.chip.add{background:var(--paper);color:var(--wood-d);font-size:18px;padding:7px 14px}
 
 /* ── 经验条 ───────────────────────────────────────── */
-.bar{height:22px;background:#4A3524;box-shadow:0 0 0 3px var(--ink),inset 0 3px 0 rgba(0,0,0,.35);
+.bar{height:30px;background:#4A3524;box-shadow:0 0 0 3px var(--ink),inset 0 3px 0 rgba(0,0,0,.35);
   position:relative;overflow:hidden}
 .bar>span{position:absolute;inset:0 auto 0 0;background:
   repeating-linear-gradient(90deg,var(--orange) 0 10px,#FF8A45 10px 12px);
   box-shadow:inset 0 4px 0 rgba(255,255,255,.45), inset 0 -4px 0 rgba(0,0,0,.2);
   transition:width .35s steps(12)}
 .bar em{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  font-style:normal;font-size:11px;color:#fff;text-shadow:1px 1px 0 #000;z-index:2}
-.bar.mini{height:14px}
-.bar.mini em{font-size:10px}
+  font-style:normal;font-size:16px;color:#fff;text-shadow:1px 1px 0 #000;z-index:2}
+.bar.mini{height:20px}
+.bar.mini em{font-size:15px}
 
 /* ── 大数字块 ─────────────────────────────────────── */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:12px}
 .stat{background:var(--paper-2);padding:10px;box-shadow:0 0 0 3px var(--ink),inset 0 0 0 2px #fff}
-.stat .k{font-size:11px;color:var(--wood-d)}
-.stat .v{font-size:18px;line-height:1.5;word-break:break-all}
-.stat .n{font-size:11px;color:var(--muted)}
+.stat .k{font-size:16px;color:var(--wood-d)}
+.stat .v{font-size:27px;line-height:1.5;word-break:break-all}
+.stat .n{font-size:16px;color:var(--muted)}
 .stat.hero{background:var(--gold)}
 
 /* ── 状态徽章 ─────────────────────────────────────── */
-.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:18px;padding:4px 10px;
   box-shadow:0 0 0 3px var(--ink);background:var(--paper-2)}
 .badge.ahead{background:var(--green);color:#fff;text-shadow:1px 1px 0 rgba(0,0,0,.35)}
 .badge.behind{background:var(--red);color:#fff;text-shadow:1px 1px 0 rgba(0,0,0,.35)}
@@ -117,69 +117,70 @@ main{max-width:860px;margin:0 auto;padding:0 16px;display:flex;flex-direction:co
 
 /* ── 表单 ─────────────────────────────────────────── */
 .row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
-.field{display:flex;flex-direction:column;gap:4px;flex:1 1 130px;min-width:120px}
-.field label{font-size:11px;color:var(--wood-d)}
-input[type=text],input[type=number],input[type=date],select{
-  font-family:inherit;font-size:14px;color:var(--ink);background:#fff;
+.field{display:flex;flex-direction:column;gap:5px;flex:1 1 170px;min-width:155px}
+.field label{font-size:16px;color:var(--wood-d)}
+input[type=text],input[type=number],input[type=date],input[type=email],input[type=password],select{
+  font-family:inherit;font-size:21px;color:var(--ink);background:#fff;
   border:none;outline:none;padding:7px 8px;width:100%;
   box-shadow:0 0 0 3px var(--ink),inset 2px 2px 0 rgba(58,42,30,.15)}
 input:focus,select:focus{box-shadow:0 0 0 3px var(--ink),0 0 0 6px var(--gold)}
-input[type=number]{font-family:'Press Start 2P','Zpix',monospace;font-size:12px}
+input[type=number]{font-family:'Press Start 2P','Zpix',monospace;font-size:18px}
 
-.btn{font-family:inherit;font-size:13px;cursor:pointer;padding:8px 16px;color:var(--ink);
+.btn{font-family:inherit;font-size:20px;cursor:pointer;padding:10px 20px;color:var(--ink);
   background:var(--paper-2);border:none;
   box-shadow:0 0 0 3px var(--ink),0 4px 0 3px rgba(58,42,30,.4),inset 0 0 0 2px #fff;
   transition:transform .06s}
 .btn:active{transform:translateY(3px);box-shadow:0 0 0 3px var(--ink),0 1px 0 3px rgba(58,42,30,.4),inset 0 0 0 2px #fff}
 .btn.primary{background:var(--orange);color:#fff;text-shadow:1px 1px 0 rgba(0,0,0,.35)}
-.btn.ghost{background:var(--paper);font-size:12px;padding:6px 12px}
+.btn.ghost{background:var(--paper);font-size:18px;padding:6px 12px}
 .btn.danger{background:var(--red);color:#fff;text-shadow:1px 1px 0 rgba(0,0,0,.35)}
-.btn.tiny{font-size:11px;padding:4px 9px;box-shadow:0 0 0 2px var(--ink),0 3px 0 2px rgba(58,42,30,.35)}
+.btn.tiny{font-size:15px;padding:5px 11px;box-shadow:0 0 0 2px var(--ink),0 3px 0 2px rgba(58,42,30,.35)}
 
 .seg{display:flex;box-shadow:0 0 0 3px var(--ink)}
-.seg button{font-family:inherit;font-size:12px;padding:7px 10px;border:none;cursor:pointer;
+.seg button{font-family:inherit;font-size:18px;padding:7px 10px;border:none;cursor:pointer;
   background:#fff;color:var(--muted)}
 .seg button.on{background:var(--orange);color:#fff}
 
 /* ── 头像选择 ─────────────────────────────────────── */
 .picks{display:flex;gap:8px;flex-wrap:wrap}
-.pick{width:44px;height:44px;display:grid;place-items:center;cursor:pointer;background:#fff;
+.pick{width:58px;height:58px;display:grid;place-items:center;cursor:pointer;background:#fff;
   box-shadow:0 0 0 3px var(--ink)}
 .pick.on{background:var(--gold);box-shadow:0 0 0 3px var(--ink),inset 0 0 0 3px #fff}
-.pick svg{width:30px;height:30px}
+.pick svg{width:40px;height:40px}
 
 /* ── 明细表 ───────────────────────────────────────── */
-.tablewrap{max-height:360px;overflow:auto;box-shadow:0 0 0 3px var(--ink);background:#fff}
-table{border-collapse:collapse;width:100%;font-size:12px}
-th,td{padding:6px 8px;text-align:right;white-space:nowrap}
+.tablewrap{max-height:460px;overflow:auto;box-shadow:0 0 0 3px var(--ink);background:#fff}
+table{border-collapse:collapse;width:100%;font-size:18px}
+th,td{padding:8px 11px;text-align:right;white-space:nowrap}
 th:first-child,td:first-child{text-align:left}
-thead th{position:sticky;top:0;background:var(--wood);color:#fff;font-weight:normal;font-size:11px;
+thead th{position:sticky;top:0;background:var(--wood);color:#fff;font-weight:normal;font-size:16px;
   box-shadow:inset 0 -3px 0 var(--ink)}
 tbody tr:nth-child(even){background:var(--paper)}
-tbody td.lv{font-family:'Press Start 2P',monospace;font-size:11px}
+tbody td.lv{font-family:'Press Start 2P',monospace;font-size:16px}
 tbody tr.mark{background:var(--gold)!important}
 
 /* ── 打卡历史 ─────────────────────────────────────── */
-.logs{display:flex;flex-direction:column;gap:5px;max-height:220px;overflow:auto}
-.logline{display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 6px;background:var(--paper-2);
+.logs{display:flex;flex-direction:column;gap:6px;max-height:300px;overflow:auto}
+.logline{display:flex;align-items:center;gap:8px;font-size:18px;padding:4px 6px;background:var(--paper-2);
   box-shadow:0 0 0 2px var(--ink)}
-.logline .d{color:var(--wood-d);font-size:11px}
+.logline .d{color:var(--wood-d);font-size:16px}
 .logline .g{margin-left:auto;color:var(--green-d)}
-.empty{font-size:12px;color:var(--muted);padding:10px 0}
+.empty{font-size:18px;color:var(--muted);padding:10px 0}
 
-.hint{font-size:11px;color:var(--muted);line-height:1.7}
+.hint{font-size:16px;color:var(--muted);line-height:1.7}
 .sep{height:3px;background:var(--ink);opacity:.12;margin:12px 0}
 
-details.more>summary{cursor:pointer;font-size:12px;color:var(--wood-d);list-style:none;
+details.more>summary{cursor:pointer;font-size:18px;color:var(--wood-d);list-style:none;
   padding:4px 0;user-select:none}
 details.more>summary::-webkit-details-marker{display:none}
 details.more>summary::before{content:'▸ ';}
 details.more[open]>summary::before{content:'▾ ';}
 
-@media(max-width:560px){
-  .logo{font-size:16px}
-  body{font-size:13px}
-  .stat .v{font-size:16px}
+@media(max-width:620px){
+  .logo{font-size:22px}
+  body{font-size:19px}
+  .stat .v{font-size:23px}
+  .clock{font-size:38px}
 }
 
 
@@ -187,19 +188,19 @@ details.more[open]>summary::before{content:'▾ ';}
 .gate{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:20px;
   background:linear-gradient(180deg,#8FD3EF 0%,#B7E6F7 55%,#DFF3D6 100%)}
 .gate[hidden]{display:none}
-.gate-box{background:var(--paper);padding:22px;width:100%;max-width:320px;text-align:center;
+.gate-box{background:var(--paper);padding:26px;width:100%;max-width:400px;text-align:center;
   box-shadow:0 0 0 3px var(--ink),0 6px 0 3px rgba(58,42,30,.35),inset 0 0 0 3px #fff}
-.gate-sprite{width:64px;height:64px;margin:0 auto 10px}
+.gate-sprite{width:84px;height:84px;margin:0 auto 10px}
 .gate-sprite svg{width:100%;height:100%}
-.gate-t{font-size:14px;color:var(--wood-d);margin-bottom:12px}
+.gate-t{font-size:21px;color:var(--wood-d);margin-bottom:12px}
 .gate-box input{margin-bottom:12px;text-align:center}
 .gate-box .btn{width:100%}
-.gate-err{font-size:12px;color:var(--red);min-height:20px;margin-top:8px}
+.gate-err{font-size:18px;color:var(--red);min-height:20px;margin-top:8px}
 
 
 /* ── 练级计时器 ───────────────────────────────────── */
-.clock{font-family:'Press Start 2P','Zpix',monospace;font-size:32px;text-align:center;
-  padding:14px 8px;background:#2B1D14;color:var(--gold);
+.clock{font-family:'Press Start 2P','Zpix',monospace;font-size:48px;text-align:center;
+  padding:18px 8px;background:#2B1D14;color:var(--gold);
   box-shadow:0 0 0 3px var(--ink),inset 0 4px 0 rgba(0,0,0,.4);letter-spacing:.04em}
 .clock.running{color:var(--green);animation:blink 2s steps(2,end) infinite}
 .clock.paused{color:#C9B48F}
@@ -209,38 +210,58 @@ details.more[open]>summary::before{content:'▾ ';}
 .chart{margin-top:12px;background:#fff;padding:10px 8px;overflow-x:auto;
   box-shadow:0 0 0 3px var(--ink)}
 .chart-bars{display:flex;align-items:flex-end;gap:6px;min-width:min-content}
-.cbar{flex:0 0 auto;min-width:42px;display:flex;flex-direction:column;align-items:center;gap:3px}
-.cbar-v{font-size:10px;color:var(--wood-d);white-space:nowrap}
+.cbar{flex:0 0 auto;min-width:62px;display:flex;flex-direction:column;align-items:center;gap:3px}
+.cbar-v{font-size:15px;color:var(--wood-d);white-space:nowrap}
 .cbar-v.neg{color:var(--red)}
-.cbar-pos{height:104px;display:flex;align-items:flex-end;width:24px}
-.cbar-neg{height:44px;display:flex;align-items:flex-start;width:24px}
+.cbar-pos{height:130px;display:flex;align-items:flex-end;width:32px}
+.cbar-neg{height:56px;display:flex;align-items:flex-start;width:32px}
 .cbar i{display:block;width:100%;background:
   repeating-linear-gradient(180deg,#FF9A5A 0 4px,var(--orange) 4px 8px);
   box-shadow:0 0 0 2px var(--ink)}
 .cbar-neg i{background:repeating-linear-gradient(180deg,#F08A7A 0 4px,var(--red) 4px 8px)}
-.cbar-x{font-family:'Press Start 2P',monospace;font-size:9px;color:var(--muted)}
+.cbar-x{font-family:'Press Start 2P',monospace;font-size:14px;color:var(--muted)}
 
 /* ── 练级记录 ─────────────────────────────────────── */
 .sesslist{display:flex;flex-direction:column;gap:6px}
 .sess{background:var(--paper-2);padding:6px 8px;box-shadow:0 0 0 2px var(--ink)}
 .sess>summary{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.sess-r{font-family:'Press Start 2P',monospace;font-size:12px;color:var(--green-d)}
+.sess-r{font-family:'Press Start 2P',monospace;font-size:18px;color:var(--green-d)}
 .sess-r.neg{color:var(--red)}
 .sess>summary .hint{flex:1 1 auto}
 
-.cbar-m{font-size:9px;color:var(--wood-d);max-width:56px;text-align:center;line-height:1.3;
+.cbar-m{font-size:14px;color:var(--wood-d);max-width:82px;text-align:center;line-height:1.3;
   word-break:break-all}
 
 /* ── 地图效率排行 ─────────────────────────────────── */
 .ranklist{display:flex;flex-direction:column;gap:5px}
-.rank{display:flex;align-items:center;gap:8px;font-size:12px}
-.rank-n{flex:0 0 96px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rank-bar{flex:1 1 auto;height:12px;background:#EADCC0;box-shadow:0 0 0 2px var(--ink)}
+.rank{display:flex;align-items:center;gap:8px;font-size:18px}
+.rank-n{flex:0 0 150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rank-bar{flex:1 1 auto;height:18px;background:#EADCC0;box-shadow:0 0 0 2px var(--ink)}
 .rank-bar i{display:block;height:100%;background:
   repeating-linear-gradient(90deg,#FF9A5A 0 6px,var(--orange) 6px 10px)}
-.rank-v{flex:0 0 auto;font-family:'Press Start 2P',monospace;font-size:10px;color:var(--green-d)}
+.rank-v{flex:0 0 auto;font-family:'Press Start 2P',monospace;font-size:15px;color:var(--green-d)}
 .rank-v.neg{color:var(--red)}
 
 .topright{display:flex;align-items:center;gap:8px}
 .gate-box input{margin-bottom:10px}
-.gate-note{font-size:10px;color:var(--muted);line-height:1.7;margin-top:10px;text-align:left}
+.gate-note{font-size:15px;color:var(--muted);line-height:1.7;margin-top:10px;text-align:left}
+
+/* ── 管理角色 ─────────────────────────────────────── */
+.mlist{display:flex;flex-direction:column;gap:8px}
+.mrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px;
+  background:var(--paper-2);box-shadow:0 0 0 3px var(--ink)}
+.mrow-s{flex:0 0 auto;width:34px;height:34px}
+.mrow-s svg{width:100%;height:100%}
+.mrow-name{flex:1 1 140px;min-width:120px;font-size:19px}
+.mrow-i{flex:0 0 auto;font-size:16px;color:var(--wood-d)}
+.mrow .btn{margin-left:auto}
+@media(max-width:620px){ .mrow .btn{margin-left:0} .mrow-name{flex:1 1 100%} }
+
+/* ── 窄屏覆盖放在最后：媒体查询不加权重，写在前面会被后面的规则压掉 ── */
+@media(max-width:620px){
+  .rank{flex-wrap:wrap;row-gap:2px}
+  .rank-n{flex:1 1 100%}
+  .rank-bar{flex:1 1 60px}
+  .mrow-name{flex:1 1 100%}
+  .mrow .btn{margin-left:0}
+}
