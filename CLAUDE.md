@@ -14,8 +14,10 @@
 
 ## 数据
 - Supabase 项目同 fitness-tracker / bobing 共用，但**这个 app 不用共用的 `snapshots` 表**
-- 主数据：`maple_data` 表，主键 `user_id`，一个账号一行，开了 RLS
+- 主数据：共用的 `user_data` 表，`app='maple'`、`name='main'`，唯一键 `(user_id, app, name)`，开了 RLS
+- 一个账号管所有 app，baby-health 等也在这张表里（各自 `app` 不同）
 - 建表 SQL 在 `supabase-setup.sql`
+- ⚠️ `app_data` 这个名字被 baby-food-tracker 的单行表占了，别搞混
 - localStorage key：`mls_v1`（退出登录时会清掉）
 - 同步策略：比 `updated_at`，新的赢；本地写入后 600ms debounce 推云端
 

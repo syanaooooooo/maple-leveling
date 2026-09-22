@@ -1,32 +1,31 @@
--- maple-leveling 的云端数据表 + RLS
+-- 一个账号管所有 app 的共用数据表 + RLS
 -- 在 Supabase 后台 → SQL Editor 里整段粘贴执行一次即可。
+--
+-- 为什么不叫 app_data：那个名字已经被 baby-food-tracker 的单行表占了。
 -- 为什么不用共用的 snapshots 表：那张表是 anon 可读写的，
--- fitness-tracker / bobing 都靠它，给它开 RLS 会把那几个 app 一起搞挂。
+-- calendairy / klassik / fitness / bobing 都还靠它，给它开 RLS 会把那些 app 一起搞挂。
 
--- 1) 建表：一个账号一行
-create table if not exists public.maple_data (
-  user_id    uuid primary key references auth.users(id) on delete cascade,
+create table if not exists public.user_data (
+  id         bigint      generated always as identity primary key,
+  user_id    uuid        not null references auth.users(id) on delete cascade,
+  app        text        not null,                 -- 'bh' / 'ft' / 'maple' / 'bobing' …
+  name       text        not null default 'main',  -- 'main' / 'slot_1' / 'auto_2026-09-22' …
   data       jsonb       not null default '{}'::jsonb,
-  updated_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, app, name)
 );
 
--- 2) 打开行级安全。不开的话下面的策略等于没写
-alter table public.maple_data enable row level security;
+create index if not exists user_data_user_app_idx on public.user_data (user_id, app);
 
--- 3) 只能碰自己那一行。auth.uid() 是 Supabase 从 JWT 里解出来的当前用户
-drop policy if exists "own row select" on public.maple_data;
-drop policy if exists "own row insert" on public.maple_data;
-drop policy if exists "own row update" on public.maple_data;
+alter table public.user_data enable row level security;
 
-create policy "own row select" on public.maple_data
-  for select using (auth.uid() = user_id);
+-- for all 一条策略覆盖增删改查（快照功能要用到 delete）
+drop policy if exists "own rows" on public.user_data;
+create policy "own rows" on public.user_data
+  for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
-create policy "own row insert" on public.maple_data
-  for insert with check (auth.uid() = user_id);
-
-create policy "own row update" on public.maple_data
-  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
--- 4) 验一下：应该看到 rowsecurity = true，以及 3 条策略
-select relrowsecurity as rls_on from pg_class where relname = 'maple_data';
-select policyname, cmd from pg_policies where tablename = 'maple_data';
+select relrowsecurity as rls_on from pg_class where relname = 'user_data';
+select policyname, cmd from pg_policies where tablename = 'user_data';

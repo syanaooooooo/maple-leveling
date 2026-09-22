@@ -818,8 +818,8 @@ function syncTick() {
 
 /* ───────────────── 登录 ─────────────────
    走 Supabase Auth：密码只在输入框里存在，直接发给 Supabase 校验，
-   源代码里没有任何密码或哈希。数据表 maple_data 开了 RLS，
-   一个账号只读得到自己那一行。 */
+   源代码里没有任何密码或哈希。数据在共用的 user_data 表（app='maple'），
+   开了 RLS，一个账号只读得到自己那些行。 */
 
 const ERR_CN = {
   'Invalid login credentials': '邮箱或密码不对',
