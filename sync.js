@@ -1,6 +1,5 @@
-// sync.js — 云端读写。复用与其它 webapp 共用的 Supabase 项目
-// 主数据：snapshots 表，name='mls_main'
-const CLOUD_KEY = 'mls_main'
+// sync.js — 云端读写。数据在 maple_data 表，每个登录用户一行，RLS 保证只读得到自己的
+const TABLE = 'maple_data'
 
 function setSyncBadge(state, text) {
   const el = document.getElementById('sync-badge')
@@ -9,26 +8,29 @@ function setSyncBadge(state, text) {
   el.querySelector('span').textContent = text
 }
 
+async function currentUser() {
+  const { data } = await window.sbClient.auth.getUser()
+  return data?.user || null
+}
+
 async function loadFromCloud() {
-  if (!window.sbClient) return null
+  const user = await currentUser()
+  if (!user) return null
   setSyncBadge('busy', '读取中')
   const { data, error } = await window.sbClient
-    .from('snapshots').select('data').eq('name', CLOUD_KEY).maybeSingle()
+    .from(TABLE).select('data').eq('user_id', user.id).maybeSingle()
   if (error) { console.warn('云端加载失败:', error.message); setSyncBadge('err', '离线'); return null }
   setSyncBadge('ok', '已同步')
   return data?.data || null
 }
 
 async function saveToCloud(payload) {
-  if (!window.sbClient) return
+  const user = await currentUser()
+  if (!user) return
   setSyncBadge('busy', '保存中')
-  const { data: updated, error: ue } = await window.sbClient
-    .from('snapshots').update({ data: payload }).eq('name', CLOUD_KEY).select('name')
-  if (ue) { console.warn('云端更新失败:', ue.message); setSyncBadge('err', '未同步'); return }
-  if (!updated || updated.length === 0) {
-    const { error: ie } = await window.sbClient
-      .from('snapshots').insert({ name: CLOUD_KEY, data: payload })
-    if (ie) { console.warn('云端插入失败:', ie.message); setSyncBadge('err', '未同步'); return }
-  }
+  const { error } = await window.sbClient.from(TABLE).upsert({
+    user_id: user.id, data: payload, updated_at: new Date().toISOString()
+  })
+  if (error) { console.warn('云端保存失败:', error.message); setSyncBadge('err', '未同步'); return }
   setSyncBadge('ok', '已同步')
 }

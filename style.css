@@ -240,3 +240,7 @@ details.more[open]>summary::before{content:'▾ ';}
   repeating-linear-gradient(90deg,#FF9A5A 0 6px,var(--orange) 6px 10px)}
 .rank-v{flex:0 0 auto;font-family:'Press Start 2P',monospace;font-size:10px;color:var(--green-d)}
 .rank-v.neg{color:var(--red)}
+
+.topright{display:flex;align-items:center;gap:8px}
+.gate-box input{margin-bottom:10px}
+.gate-note{font-size:10px;color:var(--muted);line-height:1.7;margin-top:10px;text-align:left}

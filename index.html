@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
   <div class="sky">
@@ -17,17 +17,22 @@
 
   <header class="topbar">
     <h1 class="logo">冒险岛 升级计划</h1>
-    <div class="sync" id="sync-badge"><i></i><span>本地</span></div>
+    <div class="topright">
+      <div class="sync" id="sync-badge"><i></i><span>本地</span></div>
+      <button class="btn tiny" id="logout" hidden>退出</button>
+    </div>
   </header>
 
   <div id="gate" class="gate">
-    <div class="gate-box">
+    <form class="gate-box" id="gate-form">
       <div class="gate-sprite" id="gate-sprite"></div>
-      <div class="gate-t">先报个暗号</div>
-      <input type="password" id="gate-pw" placeholder="密码" autocomplete="current-password">
-      <button class="btn primary" id="gate-go">进去</button>
+      <div class="gate-t">登录</div>
+      <input type="email" id="gate-email" placeholder="邮箱" autocomplete="username" required>
+      <input type="password" id="gate-pw" placeholder="密码" autocomplete="current-password" required>
+      <button class="btn primary" type="submit" id="gate-go">进去</button>
       <div class="gate-err" id="gate-err"></div>
-    </div>
+      <div class="gate-note">密码直接发给 Supabase 校验，不经过这个网站的代码，也不会存在你的浏览器里。</div>
+    </form>
   </div>
 
   <main id="app" hidden></main>
@@ -40,7 +45,7 @@
   <script src="supabase-config.js?v=1"></script>
   <script src="exp-table.js?v=1"></script>
   <script src="maps.js?v=1"></script>
-  <script src="sync.js?v=1"></script>
-  <script src="app.js?v=4"></script>
+  <script src="sync.js?v=2"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

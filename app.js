@@ -770,43 +770,53 @@ function syncTick() {
   }, 1000)
 }
 
-/* ───────────────── 软密码门禁 ─────────────────
-   哈希写在前端，拦的是「随手点进来的人」，不是真正的攻击者。
-   要真防住得上 Supabase RLS + 登录。 */
-const PASS_HASH = '230c3f520dfcbfafedae6f43bdd90409cc3e40b53eb6615f88a0df1ea3bc13e3'
-const PASS_KEY = 'mls_pass'
+/* ───────────────── 登录 ─────────────────
+   走 Supabase Auth：密码只在输入框里存在，直接发给 Supabase 校验，
+   源代码里没有任何密码或哈希。数据表 maple_data 开了 RLS，
+   一个账号只读得到自己那一行。 */
 
-async function sha256(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str))
-  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('')
+const ERR_CN = {
+  'Invalid login credentials': '邮箱或密码不对',
+  'Email not confirmed': '这个邮箱还没确认，去 Supabase 后台把它设成 confirmed',
 }
 
 function openApp() {
   document.getElementById('gate').hidden = true
+  document.getElementById('logout').hidden = false
   app().hidden = false
   boot()
 }
 
-async function tryPass() {
-  const inp = document.getElementById('gate-pw')
+async function doLogin(e) {
+  e.preventDefault()
+  const email = document.getElementById('gate-email').value.trim()
+  const pw = document.getElementById('gate-pw').value
   const err = document.getElementById('gate-err')
-  if (await sha256(inp.value.trim()) === PASS_HASH) {
-    localStorage.setItem(PASS_KEY, PASS_HASH)
-    openApp()
-  } else {
-    err.textContent = '暗号不对，再想想'
-    inp.value = ''
-    inp.focus()
+  const btn = document.getElementById('gate-go')
+  err.textContent = ''; btn.disabled = true; btn.textContent = '登录中…'
+  const { error } = await window.sbClient.auth.signInWithPassword({ email, password: pw })
+  btn.disabled = false; btn.textContent = '进去'
+  if (error) {
+    err.textContent = ERR_CN[error.message] || error.message
+    document.getElementById('gate-pw').value = ''
+    return
   }
+  openApp()
 }
 
-function initGate() {
+async function doLogout() {
+  await window.sbClient.auth.signOut()
+  localStorage.removeItem(LS)          // 别把数据留在这台机器上
+  location.reload()
+}
+
+async function initGate() {
   document.getElementById('gate-sprite').innerHTML = spriteSVG('mushroom')
-  if (localStorage.getItem(PASS_KEY) === PASS_HASH) { openApp(); return }
-  const inp = document.getElementById('gate-pw')
-  document.getElementById('gate-go').addEventListener('click', tryPass)
-  inp.addEventListener('keydown', e => { if (e.key === 'Enter') tryPass() })
-  inp.focus()
+  document.getElementById('gate-form').addEventListener('submit', doLogin)
+  document.getElementById('logout').addEventListener('click', doLogout)
+  const { data } = await window.sbClient.auth.getSession()
+  if (data?.session) { openApp(); return }
+  document.getElementById('gate-email').focus()
 }
 
 /* ───────────────── 启动 ───────────────── */

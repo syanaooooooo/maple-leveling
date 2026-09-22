@@ -12,10 +12,16 @@
 | `exp-table.js` | CMS079 怀旧服经验表，`EXP[L]` = L 级升 L+1 级所需经验（L = 1…199） |
 | `maps.js` | 怀旧服地图表，按地区分组，272 张图（只到维多利亚岛） |
 | `app.js` | 计算、渲染、交互 |
-| `sync.js` | Supabase 读写，主数据在 `snapshots` 表 `name='mls_main'` |
+| `sync.js` | Supabase 读写，数据在 `maple_data` 表，按 `user_id` 分行 |
+| `supabase-setup.sql` | 建表 + RLS 策略，后台跑一次 |
 | `style.css` | 像素风样式（Zpix + Press Start 2P） |
 
 localStorage key：`mls_v1`
+
+## 登录
+Supabase Auth（邮箱 + 密码）。密码不在源代码里，也不落本地，只在登录时发给 Supabase 校验。
+数据表 `maple_data` 开了行级安全，策略 `auth.uid() = user_id` —— 一个账号只读得到自己那一行。
+账号在 Supabase 后台 Authentication → Users 手动建，页面上不开放注册。
 
 ## 练级计时器
 开始 / 暂停 / 继续 / 终止，中途随时「记一笔」。每次记录都带当前等级、经验和所在地图。

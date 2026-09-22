@@ -13,9 +13,10 @@
 - 先 scope 后动手；改动前确认；不过度开发
 
 ## 数据
-- Supabase 项目同 fitness-tracker / bobing 共用
-- 主数据：`snapshots` 表，`name='mls_main'`
-- localStorage key：`ft` 无关 —— 本项目用 `mls_v1`
+- Supabase 项目同 fitness-tracker / bobing 共用，但**这个 app 不用共用的 `snapshots` 表**
+- 主数据：`maple_data` 表，主键 `user_id`，一个账号一行，开了 RLS
+- 建表 SQL 在 `supabase-setup.sql`
+- localStorage key：`mls_v1`（退出登录时会清掉）
 - 同步策略：比 `updated_at`，新的赢；本地写入后 600ms debounce 推云端
 
 ## 经验表
