@@ -127,6 +127,7 @@ function expBetween(lv, exp, toLv) {
 
 /* ───────────────── 状态 ───────────────── */
 const LS = 'mls_v1'
+const LS_BAK = 'mls_backup'   // 本机快照，防止一次坏同步把数据冲掉
 let S = { chars: [], activeId: null, updated_at: null }
 let UI = {
   expUnit: localStorage.getItem('mls_unit') || 'pct',
@@ -142,12 +143,29 @@ function loadLocal() {
 function save(push = true) {
   S.updated_at = new Date().toISOString()
   localStorage.setItem(LS, JSON.stringify(S))
+  backupLocal('保存')
   if (push) {
     clearTimeout(saveTimer)
     saveTimer = setTimeout(() => saveToCloud(S), 600)
   }
 }
 const activeChar = () => S.chars.find(c => c.id === S.activeId) || S.chars[0] || null
+
+// 本机备份：只存有内容的状态，留最近 5 份。纯本地，不上云
+function backupLocal(reason) {
+  if (!S.chars || !S.chars.length) return
+  try {
+    const list = JSON.parse(localStorage.getItem(LS_BAK) || '[]')
+    const last = list[0]
+    const body = JSON.stringify(S)
+    if (last && last.body === body) return        // 没变就不重复存
+    list.unshift({ at: new Date().toISOString(), reason, chars: S.chars.length, body })
+    localStorage.setItem(LS_BAK, JSON.stringify(list.slice(0, 5)))
+  } catch (e) { console.warn('本机备份失败:', e) }
+}
+function readBackups() {
+  try { return JSON.parse(localStorage.getItem(LS_BAK) || '[]') } catch (e) { return [] }
+}
 
 function currentOf(c) {
   const ds = Object.keys(c.logs || {}).sort()
@@ -198,7 +216,7 @@ function compute(c) {
 const app = () => document.getElementById('app')
 
 function render() {
-  if (!S.chars.length) { app().innerHTML = welcomeView(); return }
+  if (!S.chars.length) { app().innerHTML = recoverBanner() + welcomeView(); return }
   const c = activeChar()
   if (!c) { S.activeId = S.chars[0].id }
   const k = compute(c)
@@ -402,6 +420,24 @@ function tablePanel(c, k) {
   </section>`
 }
 
+// 一个角色都没有、但本机有备份时，给个找回入口
+function recoverBanner() {
+  if (S.chars && S.chars.length) return ''
+  const list = readBackups().filter(b => b.chars > 0)
+  if (!list.length) return ''
+  const rows = list.map((b, i) => `<div class="logline">
+      <span class="d en">${b.at.slice(0, 16).replace('T', ' ')}</span>
+      <span>${b.chars} 个角色</span>
+      <span class="hint">${esc(b.reason || '')}</span>
+      <button class="btn tiny" data-restore="${i}" style="margin-left:auto">恢复这份</button>
+    </div>`).join('')
+  return `<section class="panel" style="box-shadow:0 0 0 3px var(--red),0 6px 0 3px rgba(58,42,30,.35)">
+    <div class="panel-t" style="color:var(--red)">本机还留着备份</div>
+    <div class="hint" style="margin-bottom:8px">现在一个角色都没有，但这台机器上存着之前的快照。是同步出岔子的话，从这里找回来。</div>
+    <div class="logs">${rows}</div>
+  </section>`
+}
+
 function welcomeView() {
   const picks = SPRITE_KEYS.map((key, i) =>
     `<div class="pick ${i === 0 ? 'on' : ''}" data-nsprite="${key}" title="${SPRITES[key].label}">${spriteSVG(key)}</div>`).join('')
@@ -480,6 +516,19 @@ document.addEventListener('click', e => {
     e.preventDefault()
     const c = activeChar()
     if (confirm('删掉这条练级记录？')) { c.sessions = c.sessions.filter(x => x.id !== ds.dataset.delsess); save(); render() }
+    return
+  }
+
+  const rb = t.closest('[data-restore]')
+  if (rb) {
+    const b = readBackups().filter(x => x.chars > 0)[+rb.dataset.restore]
+    if (!b) return
+    if (!confirm(`用 ${b.at.slice(0, 16).replace('T', ' ')} 那份备份（${b.chars} 个角色）覆盖当前数据？`)) return
+    S = Object.assign({ chars: [], activeId: null }, JSON.parse(b.body))
+    S.updated_at = new Date().toISOString()
+    localStorage.setItem(LS, JSON.stringify(S))
+    saveToCloud(S)
+    render()
     return
   }
 
@@ -1025,11 +1074,21 @@ async function initGate() {
 /* ───────────────── 启动 ───────────────── */
 async function boot() {
   loadLocal()
+  backupLocal('启动')
   render()
   const cloud = await loadFromCloud()
   if (cloud && cloud.chars) {
+    // 云端是空的、本地有东西 —— 绝不让「空」盖掉「有」，反过来把本地推上去。
+    // 空状态多半是别处误操作或同步出岔子，不该被当成「最新」
+    if (!cloud.chars.length && S.chars.length) {
+      console.warn('云端是空的，本地有 ' + S.chars.length + ' 个角色 —— 保留本地并推上云端')
+      saveToCloud(S)
+      render()
+      return
+    }
     const cloudNewer = !S.updated_at || (cloud.updated_at && cloud.updated_at > S.updated_at)
     if (cloudNewer) {
+      backupLocal('被云端覆盖前')
       S = Object.assign({ chars: [], activeId: null }, cloud)
       localStorage.setItem(LS, JSON.stringify(S))
       render()
