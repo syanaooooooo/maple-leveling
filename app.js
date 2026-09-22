@@ -493,6 +493,45 @@ function delChar() {
   save(); render()
 }
 
+/* ───────────────── 软密码门禁 ─────────────────
+   哈希写在前端，拦的是「随手点进来的人」，不是真正的攻击者。
+   要真防住得上 Supabase RLS + 登录。 */
+const PASS_HASH = '230c3f520dfcbfafedae6f43bdd90409cc3e40b53eb6615f88a0df1ea3bc13e3'
+const PASS_KEY = 'mls_pass'
+
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str))
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+function openApp() {
+  document.getElementById('gate').hidden = true
+  app().hidden = false
+  boot()
+}
+
+async function tryPass() {
+  const inp = document.getElementById('gate-pw')
+  const err = document.getElementById('gate-err')
+  if (await sha256(inp.value.trim()) === PASS_HASH) {
+    localStorage.setItem(PASS_KEY, PASS_HASH)
+    openApp()
+  } else {
+    err.textContent = '暗号不对，再想想'
+    inp.value = ''
+    inp.focus()
+  }
+}
+
+function initGate() {
+  document.getElementById('gate-sprite').innerHTML = spriteSVG('mushroom')
+  if (localStorage.getItem(PASS_KEY) === PASS_HASH) { openApp(); return }
+  const inp = document.getElementById('gate-pw')
+  document.getElementById('gate-go').addEventListener('click', tryPass)
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') tryPass() })
+  inp.focus()
+}
+
 /* ───────────────── 启动 ───────────────── */
 async function boot() {
   loadLocal()
@@ -511,4 +550,4 @@ async function boot() {
     saveToCloud(S)
   }
 }
-boot()
+initGate()
