@@ -41,6 +41,13 @@
 - 贴边的文字要用**内联 `style="text-anchor:..."`**，SVG 里 CSS 的 `text-anchor` 会盖掉同名呈现属性
 - 窄屏下图不缩小，`.cchart` 有 `min-width:520px`，靠横向滚动保证字看得清
 
+## 今日计划进度
+- `compute()` 里的 `todayGain` / `todayNeed` / `todayPct`
+- 起点 = 今天之前最后一条打卡（没有就用计划起点）；现在 = 今天的打卡，
+  计时器里有更靠前的打点就用打点（练级中进度条也会动）
+- **今日目标用「今天开始时的剩余」算**，一天之内不会因为你打了而缩水
+- 允许超过 100%：条填满后变绿，文案显示超出多少
+
 ## 计时器数据结构
 - `c.timer` = { state:'running'|'paused', startedAt, accumMs, points:[{ms, level, exp, map, at}] }
   - `ms` 是有效计时毫秒，暂停期间不累加；`startedAt` 是 epoch，刷新页面不影响计时

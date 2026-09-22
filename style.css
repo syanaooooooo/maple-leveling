@@ -97,6 +97,12 @@ main{max-width:1060px;margin:0 auto;padding:0 16px;display:flex;flex-direction:c
 .bar em{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   font-style:normal;font-size:16px;color:#fff;text-shadow:1px 1px 0 #000;z-index:2}
 .bar.mini{height:20px}
+
+/* 今日计划条：满了之后换成绿色，表示超额 */
+.daybar-t{margin-top:12px;margin-bottom:5px;font-size:16px;color:var(--wood-d)}
+.bar.day{height:24px}
+.bar.day>span{background:repeating-linear-gradient(90deg,var(--blue) 0 10px,#7BA8E6 10px 12px)}
+.bar.day.over>span{background:repeating-linear-gradient(90deg,var(--green-d) 0 10px,var(--green) 10px 12px)}
 .bar.mini em{font-size:15px}
 
 /* ── 大数字块 ─────────────────────────────────────── */

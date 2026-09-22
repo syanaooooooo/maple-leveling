@@ -173,7 +173,25 @@ function compute(c) {
   const etaDate = (pace > 0 && remain > 0) ? addDays(t, Math.ceil(remain / pace)) : null
   const finished = remain <= 0
   const lvPerDay = expAt(cur.level) > 0 ? dailyNeed / expAt(cur.level) : 0
-  return { cur, totalPlan, remain, done, pct, totalDays, elapsed, daysLeft, dailyPlan, dailyNeed, aheadDays, pace, etaDate, finished, lvPerDay }
+
+  // ── 今日 ──
+  // 今天开始时的位置：今天之前最后一条打卡，没有就用计划起点
+  const ds = Object.keys(c.logs || {}).sort()
+  const prevD = ds.filter(d => d < t).pop()
+  const dayFrom = prevD ? c.logs[prevD] : { level: c.startLevel, exp: c.startExp }
+  // 现在的位置：今天的打卡；计时器里有更靠前的打点就用打点，这样练级中进度条也会动
+  let dayNow = c.logs && c.logs[t] ? c.logs[t] : dayFrom
+  const tp = c.timer && c.timer.points && c.timer.points[c.timer.points.length - 1]
+  if (tp && expBetween(tp.level, tp.exp, 200) < expBetween(dayNow.level, dayNow.exp, 200)) dayNow = tp
+  const todayGain = Math.max(0,
+    expBetween(dayFrom.level, dayFrom.exp, 200) - expBetween(dayNow.level, dayNow.exp, 200))
+  // 今日目标用「今天开始时的剩余」算，一天之内不会因为你打了而缩水
+  const remainAtDayStart = expBetween(dayFrom.level, dayFrom.exp, c.targetLevel)
+  const todayNeed = remainAtDayStart / Math.max(1, daysLeft)
+  const todayPct = todayNeed > 0 ? todayGain / todayNeed * 100 : (todayGain > 0 ? 100 : 0)
+
+  return { cur, totalPlan, remain, done, pct, totalDays, elapsed, daysLeft, dailyPlan, dailyNeed,
+           aheadDays, pace, etaDate, finished, lvPerDay, todayGain, todayNeed, todayPct }
 }
 
 /* ───────────────── 渲染 ───────────────── */
@@ -251,6 +269,16 @@ function overview(c, k) {
     </div>
     <div class="bar"><span style="width:${k.pct.toFixed(2)}%"></span><em class="en">${k.pct.toFixed(1)}%</em></div>
     <div class="hint" style="margin-top:6px">已打 ${fmt(k.done)} / 共 ${fmt(k.totalPlan)} 经验 · 全程平均每天要升 ${k.daysLeft > 0 ? ((c.targetLevel - k.cur.level) / k.daysLeft).toFixed(2) : '—'} 级</div>
+    ${k.finished ? '' : `
+    <div class="daybar-t">今日计划</div>
+    <div class="bar day ${k.todayPct >= 100 ? 'over' : ''}">
+      <span style="width:${Math.min(100, k.todayPct).toFixed(1)}%"></span>
+      <em class="en">${k.todayPct.toFixed(0)}%</em>
+    </div>
+    <div class="hint" style="margin-top:6px">今天打了 ${fmt(k.todayGain)} / 目标 ${fmt(k.todayNeed)} 经验${
+      k.todayPct >= 100
+        ? ` · <b style="color:var(--green-d)">已达标，超出 ${fmt(k.todayGain - k.todayNeed)}</b>`
+        : ` · 还差 ${fmt(Math.max(0, k.todayNeed - k.todayGain))}`}</div>`}
     <div class="stats">
       <div class="stat hero"><div class="k">每天需要</div><div class="v">${fmt(k.dailyNeed)}</div><div class="n">${lvText}</div></div>
       <div class="stat"><div class="k">剩余经验</div><div class="v">${fmt(k.remain)}</div><div class="n">${full(k.remain)}</div></div>
