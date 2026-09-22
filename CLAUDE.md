@@ -7,6 +7,8 @@
 - **本地服务器**：`python3 -m http.server 8891`
 - **push 惯例**：`git add -A && git commit -m "..." && git push origin main`
 - **缓存**：改 style.css / app.js / sync.js 时，index.html 里对应的 `?v=N` 加一
+  - ⚠️ 改完 **grep 一下确认真的变了**。用 sed/replace 按旧值替换时，值对不上会静默失败 ——
+    app.js 曾经卡在 `?v=5` 好几轮没人发现，线上一直吃缓存
 
 ## 沟通方式
 - 所有讨论用中文；代码注释、commit message 可中英混用
@@ -27,6 +29,14 @@
 - `maps.js` 里 `MAPS` = [{ region, maps:[{n, id}] }]，按地区分组
 - 来源 mxdzlk.com/map/，怀旧服目前只开放到维多利亚岛，共 272 张图
 - 新版本开新大陆时要重新抓一次
+
+## 图表
+- `chartHTML(points)` 画的是折线图：横轴 = 计时走过的真实时间（按间隔定位，不是等距），
+  纵轴 = 那一段的经验/小时
+- Y 轴**按数据自身范围自适应**，上下各留 12%，不硬从 0 起 —— 从 0 起会把起伏压成一条平线
+- 值跨 0 时画一条红色虚线标 0；刻度用 `fmtAxis(v, span)` 按量程挑精度，免得小范围下刻度重复
+- 贴边的文字要用**内联 `style="text-anchor:..."`**，SVG 里 CSS 的 `text-anchor` 会盖掉同名呈现属性
+- 窄屏下图不缩小，`.cchart` 有 `min-width:520px`，靠横向滚动保证字看得清
 
 ## 计时器数据结构
 - `c.timer` = { state:'running'|'paused', startedAt, accumMs, points:[{ms, level, exp, map, at}] }

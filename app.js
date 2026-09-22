@@ -613,6 +613,15 @@ function fmtShort(ms) {
 function rateOf(gain, ms) { return ms > 0 ? gain / (ms / 3600000) : 0 }
 const signed = n => (n < 0 ? '−' : '') + fmt(Math.abs(n))
 
+// 坐标轴刻度：按整个量程挑精度，免得小范围下几个刻度都显示成同一个数
+function fmtAxis(v, span) {
+  if (span >= 1e8) return (v / 1e8).toFixed(2) + '亿'
+  if (span >= 1e6) return Math.round(v / 1e4) + '万'
+  if (span >= 1e4) return (v / 1e4).toFixed(1) + '万'
+  if (span >= 100) return Math.round(v).toLocaleString('en-US')
+  return String(Math.round(v * 10) / 10)
+}
+
 function segmentsOf(points) {
   const segs = []
   for (let i = 1; i < points.length; i++) {
@@ -626,21 +635,94 @@ function segmentsOf(points) {
 function chartHTML(points) {
   const segs = segmentsOf(points)
   if (!segs.length) return '<div class="empty">至少要两个打点才画得出图。</div>'
-  const max = Math.max(...segs.map(x => Math.abs(x.rate)), 1)
-  const hasNeg = segs.some(x => x.rate < 0)
-  const bars = segs.map(sg => {
-    const h = Math.round(Math.abs(sg.rate) / max * 100)
-    const neg = sg.rate < 0
-    return `<div class="cbar" title="${esc(sg.map || '没填地图')} · ${fmtShort(sg.dt)} 内 ${signed(sg.gain)} 经验">
-      <div class="cbar-v ${neg ? 'neg' : ''}">${signed(sg.rate)}</div>
-      <div class="cbar-pos">${neg ? '' : `<i style="height:${h}px"></i>`}</div>
-      ${hasNeg ? `<div class="cbar-neg">${neg ? `<i style="height:${h}px"></i>` : ''}</div>` : ''}
-      <div class="cbar-x">${fmtDur(sg.at).slice(0, 5)}</div>
-      <div class="cbar-m">${esc(sg.map || '—')}</div>
-    </div>`
-  }).join('')
-  return `<div class="chart"><div class="chart-bars">${bars}</div></div>
-    <div class="hint">柱高 = 那一段的经验/小时，横轴是计时走到第几分钟。${hasNeg ? '往下的是掉经验的段。' : ''}</div>`
+
+  const W = 680, H = 310, L = 86, R = 22, T = 46, B = 62
+  const iw = W - L - R, ih = H - T - B
+  const t0 = points[0].ms
+  const tSpan = Math.max(1, points[points.length - 1].ms - t0)
+
+  // Y 轴按数据自己的范围走，上下各留 12% —— 不硬从 0 起，不然起伏全挤成一条线
+  let lo = Math.min(...segs.map(s => s.rate))
+  let hi = Math.max(...segs.map(s => s.rate))
+  if (hi === lo) { const d = Math.abs(hi) * 0.3 || 1; lo -= d; hi += d }
+  const pad = (hi - lo) * 0.12
+  lo -= pad; hi += pad
+
+  const px = ms => L + (ms - t0) / tSpan * iw
+  const py = v => T + (hi - v) / (hi - lo) * ih
+
+  // 横网格 + Y 刻度
+  let grid = ''
+  const TICKS = 4
+  for (let i = 0; i <= TICKS; i++) {
+    const v = lo + (hi - lo) * (1 - i / TICKS)
+    const y = py(v)
+    grid += `<line class="cg" x1="${L}" y1="${y.toFixed(1)}" x2="${W - R}" y2="${y.toFixed(1)}"/>`
+    grid += `<text class="cyl" x="${L - 10}" y="${(y + 6).toFixed(1)}">${fmtAxis(v, hi - lo)}</text>`
+  }
+  if (lo < 0 && hi > 0) {
+    grid += `<line class="czero" x1="${L}" y1="${py(0).toFixed(1)}" x2="${W - R}" y2="${py(0).toFixed(1)}"/>`
+  }
+
+  // 折线：补一个起点，让线从左边缘开始
+  const nodes = [{ ms: t0, rate: segs[0].rate, lead: true }]
+    .concat(segs.map(s => ({ ms: s.at, rate: s.rate, seg: s })))
+  const line = nodes.map(n => `${px(n.ms).toFixed(1)},${py(n.rate).toFixed(1)}`).join(' ')
+
+  // 贴边的文字改对齐方式，居中会被画布裁掉。
+  // 必须用内联 style：SVG 里 CSS 的 text-anchor 会盖掉同名的呈现属性
+  const edgeAnchor = x =>
+    x < L + 30 ? 'style="text-anchor:start"' : x > W - R - 30 ? 'style="text-anchor:end"' : ''
+
+  // 数据点：像素风用小方块，不用圆
+  const showAll = segs.length <= 8
+  const maxR = Math.max(...segs.map(s => s.rate))
+  const minR = Math.min(...segs.map(s => s.rate))
+  let dots = ''
+  segs.forEach((sg, i) => {
+    const x = px(sg.at), y = py(sg.rate)
+    const label = showAll || sg.rate === maxR || sg.rate === minR || i === segs.length - 1
+    dots += `<rect class="cdot" x="${(x - 5).toFixed(1)}" y="${(y - 5).toFixed(1)}" width="10" height="10">
+      <title>${esc(sg.map || '没填地图')} · ${fmtShort(sg.dt)} 内 ${signed(sg.gain)} 经验</title></rect>`
+    if (label) {
+      const ly = Math.max(T - 6, y - 16)   // 别顶出画布
+      dots += `<text class="cvl" ${edgeAnchor(x)} x="${x.toFixed(1)}" y="${ly.toFixed(1)}">${signed(sg.rate)}</text>`
+    }
+  })
+
+  // X 刻度：最多 6 个，均匀取
+  let xax = ''
+  const step = Math.max(1, Math.ceil(segs.length / 6))
+  segs.forEach((sg, i) => {
+    if (i % step !== 0 && i !== segs.length - 1) return
+    const x = px(sg.at)
+    xax += `<line class="cg" x1="${x.toFixed(1)}" y1="${T + ih}" x2="${x.toFixed(1)}" y2="${T + ih + 6}"/>`
+    xax += `<text class="cxl" ${edgeAnchor(x)} x="${x.toFixed(1)}" y="${T + ih + 24}">${fmtDur(sg.at).slice(0, 5)}</text>`
+  })
+  // 地图名只在换图的时候标一次
+  let maps = ''
+  let prev = null
+  segs.forEach(sg => {
+    if (!sg.map || sg.map === prev) return
+    prev = sg.map
+    const mx = px(sg.at)
+    maps += `<text class="cml" ${edgeAnchor(mx)} x="${mx.toFixed(1)}" y="${T + ih + 44}">${esc(sg.map)}</text>`
+  })
+
+  const avg = rateOf(segs.reduce((a, s) => a + s.gain, 0), segs.reduce((a, s) => a + s.dt, 0))
+
+  return `<div class="chart">
+    <svg viewBox="0 0 ${W} ${H}" class="cchart" xmlns="http://www.w3.org/2000/svg">
+      ${grid}
+      <line class="caxis" x1="${L}" y1="${T}" x2="${L}" y2="${T + ih}"/>
+      <line class="caxis" x1="${L}" y1="${T + ih}" x2="${W - R}" y2="${T + ih}"/>
+      <polyline class="cline" points="${line}"/>
+      ${dots}${xax}${maps}
+      <text class="cyt" x="${L - 76}" y="20">经验/小时</text>
+    </svg>
+  </div>
+  <div class="hint">纵轴是那一段的经验/小时，横轴是计时走了多久（按真实间隔画，不是等距）。
+    最高 ${signed(maxR)}/h · 最低 ${signed(minR)}/h · 全程平均 ${signed(avg)}/h。</div>`
 }
 
 function timerPanel(c) {

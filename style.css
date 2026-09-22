@@ -207,20 +207,20 @@ details.more[open]>summary::before{content:'▾ ';}
 .clock.paused{color:#C9B48F}
 @keyframes blink{0%,60%{opacity:1}61%,100%{opacity:.72}}
 
-/* ── 柱状图 ───────────────────────────────────────── */
-.chart{margin-top:12px;background:#fff;padding:10px 8px;overflow-x:auto;
-  box-shadow:0 0 0 3px var(--ink)}
-.chart-bars{display:flex;align-items:flex-end;gap:6px;min-width:min-content}
-.cbar{flex:0 0 auto;min-width:62px;display:flex;flex-direction:column;align-items:center;gap:3px}
-.cbar-v{font-size:15px;color:var(--wood-d);white-space:nowrap}
-.cbar-v.neg{color:var(--red)}
-.cbar-pos{height:130px;display:flex;align-items:flex-end;width:32px}
-.cbar-neg{height:56px;display:flex;align-items:flex-start;width:32px}
-.cbar i{display:block;width:100%;background:
-  repeating-linear-gradient(180deg,#FF9A5A 0 4px,var(--orange) 4px 8px);
-  box-shadow:0 0 0 2px var(--ink)}
-.cbar-neg i{background:repeating-linear-gradient(180deg,#F08A7A 0 4px,var(--red) 4px 8px)}
-.cbar-x{font-family:'Press Start 2P',monospace;font-size:14px;color:var(--muted)}
+/* ── 折线图 ───────────────────────────────────────── */
+.chart{margin-top:12px;background:#fff;padding:10px 8px;overflow-x:auto;box-shadow:0 0 0 3px var(--ink)}
+/* 窄屏不把图压扁，宁可横向滚，字才看得清 */
+.cchart{width:100%;min-width:520px;height:auto;display:block;font-family:'Zpix',monospace}
+.cchart .cg{stroke:#E3D6BC;stroke-width:2;shape-rendering:crispEdges}
+.cchart .czero{stroke:var(--red);stroke-width:2;stroke-dasharray:6 4;shape-rendering:crispEdges}
+.cchart .caxis{stroke:var(--ink);stroke-width:3;shape-rendering:crispEdges}
+.cchart .cline{fill:none;stroke:var(--orange);stroke-width:4;stroke-linejoin:round;stroke-linecap:round}
+.cchart .cdot{fill:var(--gold);stroke:var(--ink);stroke-width:3;shape-rendering:crispEdges;cursor:help}
+.cchart .cyl{fill:var(--wood-d);font-size:15px;text-anchor:end}
+.cchart .cxl{fill:var(--wood-d);font-size:15px;text-anchor:middle;font-family:'Press Start 2P',monospace}
+.cchart .cvl{fill:var(--ink);font-size:16px;text-anchor:middle}
+.cchart .cml{fill:var(--green-d);font-size:14px;text-anchor:middle}
+.cchart .cyt{fill:var(--muted);font-size:14px;text-anchor:start}
 
 /* ── 练级记录 ─────────────────────────────────────── */
 .sesslist{display:flex;flex-direction:column;gap:6px}
@@ -230,8 +230,6 @@ details.more[open]>summary::before{content:'▾ ';}
 .sess-r.neg{color:var(--red)}
 .sess>summary .hint{flex:1 1 auto}
 
-.cbar-m{font-size:14px;color:var(--wood-d);max-width:82px;text-align:center;line-height:1.3;
-  word-break:break-all}
 
 /* ── 地图效率排行 ─────────────────────────────────── */
 .ranklist{display:flex;flex-direction:column;gap:5px}
