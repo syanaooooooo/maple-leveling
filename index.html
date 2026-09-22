@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#9BD9F2">
+<title>冒险岛升级计划</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+  <div class="sky">
+    <div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div>
+  </div>
+
+  <header class="topbar">
+    <h1 class="logo">冒险岛 升级计划</h1>
+    <div class="sync" id="sync-badge"><i></i><span>本地</span></div>
+  </header>
+
+  <main id="app"></main>
+
+  <footer class="foot">
+    <span class="en">CMS079</span> 怀旧服经验表 · 数据自动同步
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js?v=1"></script>
+  <script src="exp-table.js?v=1"></script>
+  <script src="sync.js?v=1"></script>
+  <script src="app.js?v=1"></script>
+</body>
+</html>
