@@ -382,7 +382,7 @@ function todayPanel(c, k) {
       </div>
       <div class="field" style="flex:1 1 160px">
         <label>本级经验${unitPct ? '（%）' : '（点）'}</label>
-        <input type="text" inputmode="decimal" class="numin" id="in-exp" value="${val}">
+        <input type="text" inputmode="numeric" class="numin ${unitPct ? 'pctin' : ''}" id="in-exp" value="${val}">
       </div>
       <div class="field" style="flex:0 0 auto">
         <label>单位</label>
@@ -516,7 +516,7 @@ function welcomeView() {
     <div class="sep"></div>
     <div class="row">
       <div class="field" style="flex:0 0 110px"><label>当前等级</label><input type="text" inputmode="numeric" class="numin" id="n-lv" value="30"></div>
-      <div class="field" style="flex:0 0 130px"><label>本级经验 %</label><input type="text" inputmode="decimal" class="numin" id="n-exp" value="0"></div>
+      <div class="field" style="flex:0 0 130px"><label>本级经验 %</label><input type="text" inputmode="numeric" class="numin pctin" id="n-exp" value="0.00"></div>
       <div class="field"><label>目标等级</label><select id="n-tlv">${opts.join('')}</select></div>
       <div class="field"><label>目标日期</label><input type="date" id="n-tdate" value="${addDays(today(), 60)}"></div>
     </div>
@@ -578,6 +578,7 @@ document.addEventListener('click', e => {
 
   if (t.id === 'tm-start') return tmStart()
   if (t.id === 'tm-mark') return tmMark()
+  if (t.id === 'tm-undo') return tmUndo()
   if (t.id === 'tm-pause') return tmPause()
   if (t.id === 'tm-resume') return tmResume()
   if (t.id === 'tm-stop') return tmStop()
@@ -904,10 +905,12 @@ function timerPanel(c) {
     ? `<button class="btn primary" id="tm-start">开始</button>`
     : state === 'running'
       ? `<button class="btn" id="tm-mark">记一笔</button>
+         ${pts.length > 1 ? '<button class="btn ghost" id="tm-undo">撤销上一笔</button>' : ''}
          <button class="btn" id="tm-pause">暂停</button>
          <button class="btn danger" id="tm-stop">终止</button>`
       : `<button class="btn primary" id="tm-resume">继续</button>
          <button class="btn" id="tm-mark">记一笔</button>
+         ${pts.length > 1 ? '<button class="btn ghost" id="tm-undo">撤销上一笔</button>' : ''}
          <button class="btn danger" id="tm-stop">终止</button>`
 
   const live = pts.length >= 2
@@ -932,7 +935,7 @@ function timerPanel(c) {
       <div class="field" style="flex:0 0 110px"><label>当前等级</label>
         <input type="text" inputmode="numeric" class="numin" id="tm-lv" value="${seed.level}"></div>
       <div class="field" style="flex:1 1 150px"><label>本级经验${unitPct ? '（%）' : '（点）'}</label>
-        <input type="text" inputmode="decimal" class="numin" id="tm-exp" value="${seedVal}"></div>
+        <input type="text" inputmode="numeric" class="numin ${unitPct ? 'pctin' : ''}" id="tm-exp" value="${seedVal}"></div>
     </div>
     <div class="row" style="margin-top:8px">
       ${mapPicker()}
@@ -1033,6 +1036,22 @@ function tmMark(silent) {
   }
   if (!silent) { save(); render() }
 }
+// 撤销最后一个打点。起点那一笔撤不掉 —— 撤了整段计时就没有参照了
+function tmUndo() {
+  const c = activeChar()
+  const t = c.timer
+  if (!t || t.points.length < 2) return
+  const last = t.points[t.points.length - 1]
+  const prev = t.points[t.points.length - 2]
+  const gain = gainBetween(prev, last)
+  if (!confirm(`撤销最后一笔？\n\n` +
+      `${fmtDur(last.ms)}  Lv.${last.level} · ${(expAt(last.level) > 0 ? last.exp / expAt(last.level) * 100 : 0).toFixed(2)}%` +
+      `${last.map ? '  ' + last.map : ''}\n` +
+      `这一段记的是 ${signed(gain)} 经验，撤掉之后回到上一笔。`)) return
+  t.points.pop()
+  save(); render()
+}
+
 function tmPause() {
   const c = activeChar(); const t = c.timer; if (!t || t.state !== 'running') return
   tmMark(true)
@@ -1083,6 +1102,20 @@ function syncTick() {
     el.textContent = fmtDur(timerMs(cc.timer))
   }, 1000)
 }
+
+/* ── 百分比框：直接敲数字，小数点自动补上 ──
+   敲 1 1 5 6 依次显示 0.01 → 0.11 → 1.15 → 11.56。
+   退格也按显示的字符走，和收银机/ATM 的输入手感一致。
+   这么做主要是为了少出事故：以前要手打小数点，很容易留着上一次的值就按了「记一笔」。 */
+document.addEventListener('input', e => {
+  const el = e.target
+  if (!el.matches || !el.matches('input.pctin')) return
+  const digits = el.value.replace(/\D/g, '').replace(/^0+(?=\d{3})/, '').slice(0, 5)  // 最大 100.00
+  const v = Math.min(10000, Number(digits || 0))
+  el.value = (v / 100).toFixed(2)
+  const n = el.value.length
+  try { el.setSelectionRange(n, n) } catch (_) { /* 忽略 */ }
+})
 
 /* ── 数字框聚焦时光标落到末尾，方便直接退格改数 ── */
 document.addEventListener('focusin', e => {
