@@ -323,14 +323,16 @@ td.neg{color:var(--red)}
 .bar.day.big em{font-size:24px}
 .bar.day>span{background:repeating-linear-gradient(90deg,var(--blue) 0 10px,#7BA8E6 10px 12px)}
 .bar.day.over>span{background:repeating-linear-gradient(90deg,var(--green-d) 0 10px,var(--green) 10px 12px)}
-.today-say{margin-top:7px;font-size:19px;color:var(--wood-d)}
-.today-say.ok{color:var(--green-d)}
+.say{margin-top:7px;font-size:17px;line-height:1.7;color:var(--wood-d)}
+.say.ok{color:var(--green-d)}
+.say b{font-family:'Press Start 2P','Zpix',monospace;font-size:15px;color:var(--ink)}
 
 /* 整体 —— 背景信息，一行放完 */
 .overall{display:flex;align-items:center;gap:10px;margin-bottom:12px}
 .overall-k{flex:0 0 auto;font-size:16px;color:var(--muted)}
 .overall .bar{flex:1 1 auto}
-.overall-v{flex:0 0 auto;font-size:15px;color:var(--muted)}
+.overall-v{flex:0 0 auto;font-size:17px;color:var(--wood-d)}
+.overall-v b{color:var(--ink)}
 
 .stat .v small{font-size:14px;color:var(--wood-d)}
 
@@ -340,10 +342,10 @@ td.neg{color:var(--red)}
   .badge{font-size:14px;padding:3px 8px}
   .bar.day.big{height:34px}
   .bar.day.big em{font-size:20px}
-  .today-say{font-size:17px}
+  .say{font-size:16px}
   /* 窄屏让整体条独占一行，不然细条被挤成一小截，里面的百分比都放不下 */
   .overall{flex-wrap:wrap;row-gap:6px}
   .overall-k{order:1}
-  .overall-v{order:2;margin-left:auto;font-size:14px}
+  .overall-v{order:2;margin-left:auto;font-size:15px}
   .overall .bar{order:3;flex:1 1 100%}
 }

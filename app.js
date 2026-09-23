@@ -360,20 +360,17 @@ function overview(c, k) {
         <span style="width:${Math.min(100, k.todayPct).toFixed(1)}%"></span>
         <em class="en">${k.todayPct.toFixed(0)}%</em>
       </div>
-      <div class="today-say ${done ? 'ok' : ''}">
+      <div class="say ${done ? 'ok' : ''}">
         ${done
           ? `已达标 · 已升 ${(k.todayGainLevels * 100).toFixed(1)}%，超出 ${((k.todayGainLevels - k.todayLevels) * 100).toFixed(1)}%`
-          : `已升 ${(k.todayGainLevels * 100).toFixed(1)}%，还差 ${((k.todayLevels - k.todayGainLevels) * 100).toFixed(1)}%`}
+          : `还差 ${((k.todayLevels - k.todayGainLevels) * 100).toFixed(1)}% · 打到 <b class="en">${fmtPos(k.dayGoalPos)}</b>`}
       </div>
-      <div class="hint">${done
-        ? `今天的线是 <b class="en">${fmtPos(k.dayGoalPos)}</b>，已经过了`
-        : `再打到 <b class="en">${fmtPos(k.dayGoalPos)}</b> 就达标`}</div>
     </div>`}
 
     <div class="overall">
       <span class="overall-k">整体</span>
       <div class="bar mini"><span style="width:${k.pct.toFixed(2)}%"></span><em class="en">${k.pct.toFixed(1)}%</em></div>
-      <span class="overall-v en">${k.levelsDone.toFixed(2)} / ${k.levelsTotal.toFixed(2)} 级</span>
+      <span class="overall-v"><b class="en">${k.levelsDone.toFixed(2)} / ${k.levelsTotal.toFixed(2)}</b> 级 · 还剩 ${fmt(k.remain)} 经验</span>
     </div>
 
     <div class="stats">
@@ -381,7 +378,6 @@ function overview(c, k) {
       <div class="stat"><div class="k">剩余天数</div><div class="v en">${k.daysLeft > 0 ? k.daysLeft : (k.daysLeft === 0 ? '今天' : '超时')}</div><div class="n">目标 ${c.targetDate}</div></div>
       <div class="stat"><div class="k">按当前速度</div><div class="v">${k.etaDate ? mmdd(k.etaDate) : '—'}</div><div class="n">${k.etaDate ? '预计 ' + k.etaDate + ' 达成' : '数据还不够'}${k.paceLevels > 0 ? ` · 实际每天 ${(k.paceLevels * 100).toFixed(1)}%` : ''}</div></div>
     </div>
-    <div class="hint" style="margin-top:8px">剩余 ${fmt(k.remain)} 经验 · 原计划每天 ${(k.lvPerDayPlan * 100).toFixed(1)}% · 已打 ${fmt(k.done)}</div>
   </section>`
 }
 
