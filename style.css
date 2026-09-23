@@ -98,8 +98,6 @@ main{max-width:1060px;margin:0 auto;padding:0 16px;display:flex;flex-direction:c
   font-style:normal;font-size:16px;color:#fff;text-shadow:1px 1px 0 #000;z-index:2}
 .bar.mini{height:20px}
 
-/* 今日计划条：满了之后换成绿色，表示超额 */
-.daybar-t{margin-top:12px;margin-bottom:5px;font-size:16px;color:var(--wood-d)}
 .bar.day{height:24px}
 .bar.day>span{background:repeating-linear-gradient(90deg,var(--blue) 0 10px,#7BA8E6 10px 12px)}
 .bar.day.over>span{background:repeating-linear-gradient(90deg,var(--green-d) 0 10px,var(--green) 10px 12px)}
@@ -114,7 +112,7 @@ main{max-width:1060px;margin:0 auto;padding:0 16px;display:flex;flex-direction:c
 .stat.hero{background:var(--gold)}
 
 /* ── 状态徽章 ─────────────────────────────────────── */
-.badge{display:inline-flex;align-items:center;gap:6px;font-size:18px;padding:4px 10px;
+.badge{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex:0 0 auto;font-size:18px;padding:4px 10px;
   box-shadow:0 0 0 3px var(--ink);background:var(--paper-2)}
 .badge.ahead{background:var(--green);color:#fff;text-shadow:1px 1px 0 rgba(0,0,0,.35)}
 .badge.behind{background:var(--red);color:#fff;text-shadow:1px 1px 0 rgba(0,0,0,.35)}
@@ -287,17 +285,6 @@ details.more[open]>summary::before{content:'▾ ';}
   .pausemark em{font-size:14px}
 }
 
-/* 今日计划：等级+百分比是主角 */
-.daygoal{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;
-  padding:8px 10px;background:var(--paper-2);box-shadow:0 0 0 3px var(--ink)}
-.daygoal span{font-size:17px;color:var(--wood-d)}
-.daygoal b{font-family:'Press Start 2P','Zpix',monospace;font-size:16px;color:var(--ink)}
-.daygoal-to b{color:var(--orange)}
-.daygoal-arrow{color:var(--muted)}
-@media(max-width:620px){
-  .daygoal{gap:6px}
-  .daygoal span,.daygoal b{font-size:15px}
-}
 
 /* ── tab 切换 ─────────────────────────────────────── */
 .panel.tabs{display:flex;gap:8px;padding:8px}
@@ -315,4 +302,48 @@ td.neg{color:var(--red)}
 @media(max-width:620px){
   .statstable th:nth-child(3),.statstable td:nth-child(3){display:none}
   .statstable th,.statstable td{padding:8px 6px}
+}
+
+/* ── 总进度的主次 ──────────────────────────────────
+   一屏之内只让一个东西最大：今天还要打多少。
+   整体进度是背景信息，压成细条；身份行只说一次等级，不重复。 */
+
+.who{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.who-face{width:46px;flex:none}
+.who-txt{flex:1 1 auto;min-width:0}
+.who-name{font-size:22px;line-height:1.4}
+.who-lv{font-size:19px;color:var(--wood-d);line-height:1.4}
+
+/* 今天 —— 唯一的主角 */
+.today{margin-bottom:14px}
+.today-head{font-size:17px;color:var(--wood-d);margin-bottom:6px}
+.today-head b{color:var(--ink);font-size:19px}
+.bar.day{height:26px}
+.bar.day.big{height:40px}
+.bar.day.big em{font-size:24px}
+.bar.day>span{background:repeating-linear-gradient(90deg,var(--blue) 0 10px,#7BA8E6 10px 12px)}
+.bar.day.over>span{background:repeating-linear-gradient(90deg,var(--green-d) 0 10px,var(--green) 10px 12px)}
+.today-say{margin-top:7px;font-size:19px;color:var(--wood-d)}
+.today-say.ok{color:var(--green-d)}
+
+/* 整体 —— 背景信息，一行放完 */
+.overall{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.overall-k{flex:0 0 auto;font-size:16px;color:var(--muted)}
+.overall .bar{flex:1 1 auto}
+.overall-v{flex:0 0 auto;font-size:15px;color:var(--muted)}
+
+.stat .v small{font-size:14px;color:var(--wood-d)}
+
+@media(max-width:620px){
+  .who-name{font-size:19px}
+  .who-lv{font-size:15px}
+  .badge{font-size:14px;padding:3px 8px}
+  .bar.day.big{height:34px}
+  .bar.day.big em{font-size:20px}
+  .today-say{font-size:17px}
+  /* 窄屏让整体条独占一行，不然细条被挤成一小截，里面的百分比都放不下 */
+  .overall{flex-wrap:wrap;row-gap:6px}
+  .overall-k{order:1}
+  .overall-v{order:2;margin-left:auto;font-size:14px}
+  .overall .bar{order:3;flex:1 1 100%}
 }
