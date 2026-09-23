@@ -207,6 +207,10 @@ function compute(c) {
   const pct = totalPlan > 0 ? clamp(done / totalPlan * 100, 0, 100) : 100
   const totalDays = Math.max(1, diffDays(c.startDate, c.targetDate))
   const elapsed = clamp(diffDays(c.startDate, t), 0, 100000)
+  // 小数天：今天过了多少也算进分母。
+  // 用整数天会把今天打的经验算进分子、却不算进分母 —— 计划第二天的上午，
+  // 一天半的战果除以 1 天，「实际每天」会虚高五成，ETA 跟着乐观
+  const elapsedDays = Math.max(0, (Date.now() - parseD(c.startDate).getTime()) / DAY)
   const daysLeft = diffDays(t, c.targetDate)
 
   // ── 计划以「级数」为单位，不是经验 ──
@@ -223,9 +227,10 @@ function compute(c) {
   const dailyNeed = expFromTo(cur, advanceLevels(cur.level, cur.exp, lvPerDay))
   const dailyPlan = totalDays > 0 ? totalPlan / totalDays : 0         // 旧口径，只在文案里提一嘴
 
-  const expectedLevels = Math.min(levelsTotal, lvPerDayPlan * elapsed)
+  const expectedLevels = Math.min(levelsTotal, lvPerDayPlan * elapsedDays)
   const aheadDays = lvPerDayPlan > 0 ? (levelsDone - expectedLevels) / lvPerDayPlan : 0
-  const paceLevels = elapsed > 0 ? levelsDone / elapsed : 0
+  // 不足 6 小时的数据不配算速度 —— 刚建好计划打了五分钟，会推出「明天就达成」
+  const paceLevels = elapsedDays >= 0.25 ? levelsDone / elapsedDays : 0
   const etaDate = (paceLevels > 0 && levelsLeft > 0)
     ? addDays(t, Math.ceil(levelsLeft / paceLevels)) : null
   const finished = remain <= 0
