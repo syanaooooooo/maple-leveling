@@ -108,6 +108,11 @@
 - `tmUndo()` 撤销最后一个打点（起点那笔撤不掉）。确认框里会写清楚要撤的是哪一笔、
   那一段记了多少经验 —— 记错的打点会让效率图出现巨大负值，撤销是最快的补救
 
-## 门禁
-- 软密码门禁，SHA-256 哈希硬编码在 `app.js` 的 `PASS_HASH`
-- 只拦随手点进来的人。真要防护得上 Supabase RLS + 登录
+## 登录与安全
+- **Supabase Auth（邮箱 + 密码）**。账号和 baby-health / baby-food / emotion-dial 共用一个
+- **源代码里不能出现任何密码或密码哈希**。密码只在输入框里存在，直接发给 Supabase 校验
+- `user_data` 开了 RLS，策略 `auth.uid() = user_id` —— 没登录读不到任何东西
+- `supabase-config.js` 里的 anon key 是设计成公开的，不是秘密，别为了藏它折腾
+- 账号在 Supabase 后台 Authentication → Users 手动建，页面上不开放注册
+- 退出登录会清掉 localStorage 里的 `mls_v1`
+- 历史：原来是软密码门禁（`PASS_HASH` 硬编码），2026-09-22 换掉了
