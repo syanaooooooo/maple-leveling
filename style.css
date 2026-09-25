@@ -203,13 +203,26 @@ details.more[open]>summary::before{content:'▾ ';}
 
 
 /* ── 练级计时器 ───────────────────────────────────── */
-.clock{position:relative;min-height:124px;display:flex;align-items:center;justify-content:center;
-  font-family:'Press Start 2P','Zpix',monospace;font-size:48px;text-align:center;
-  padding:18px 8px;background:#2B1D14;color:var(--gold);
-  box-shadow:0 0 0 3px var(--ink),inset 0 4px 0 rgba(0,0,0,.4);letter-spacing:.04em}
-.clock.running{color:var(--green);animation:blink 2s steps(2,end) infinite}
-.clock.paused{color:#C9B48F}
-@keyframes blink{0%,60%{opacity:1}61%,100%{opacity:.72}}
+.clock{display:flex;align-items:center;gap:12px;padding:10px 14px;
+  background:#2B1D14;box-shadow:0 0 0 3px var(--ink),inset 0 3px 0 rgba(0,0,0,.35)}
+.clock .dot{width:12px;height:12px;flex:none;background:var(--muted);box-shadow:0 0 0 2px rgba(0,0,0,.4)}
+.clock #tm-time{font-size:30px;letter-spacing:.04em;color:#C9B48F}
+.clock em{font-style:normal;margin-left:auto;font-size:16px;color:#A99177}
+.clock.running .dot{background:var(--green);animation:tick 1s steps(2,end) infinite}
+.clock.running #tm-time{color:var(--green)}
+.clock.running em{color:var(--green)}
+.clock.paused .dot{background:var(--gold);animation:tick 1.4s steps(2,end) infinite}
+.clock.paused #tm-time{color:var(--gold)}
+.clock.paused em{color:var(--gold)}
+@keyframes tick{0%,55%{opacity:1}56%,100%{opacity:.25}}
+
+/* 按钮单独一行、等宽，不再和下拉挤在一起 */
+.tmbtns{display:flex;gap:8px;margin-top:10px}
+.tmbtns .btn{flex:1 1 0;padding-left:8px;padding-right:8px;text-align:center}
+
+/* 倍率标签 */
+.multtag{display:inline-block;padding:2px 8px;font-family:'Press Start 2P',monospace;font-size:13px;
+  background:var(--gold);color:var(--ink);box-shadow:0 0 0 2px var(--ink)}
 
 /* ── 折线图 ───────────────────────────────────────── */
 .chart{margin-top:12px;background:#fff;padding:10px 8px;overflow-x:auto;box-shadow:0 0 0 3px var(--ink)}
@@ -269,20 +282,11 @@ details.more[open]>summary::before{content:'▾ ';}
   .mrow .btn{margin-left:0}
 }
 
-/* ── 暂停时横在计时器上的大 ⏸ ── */
-.pausemark{position:absolute;inset:0;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:10px;
-  background:rgba(12,7,3,.88);animation:pausepulse 1.4s steps(2,end) infinite}
-.pausemark span{display:flex;gap:26px}
-.pausemark b{display:block;width:34px;height:58px;background:var(--gold);
-  box-shadow:0 0 0 4px var(--ink), inset 0 6px 0 rgba(255,255,255,.35)}
-.pausemark em{font-style:normal;font-size:16px;color:var(--gold);letter-spacing:.06em}
-@keyframes pausepulse{0%,62%{opacity:1}63%,100%{opacity:.5}}
 @media(max-width:620px){
-  .clock{min-height:104px}
-  .pausemark span{gap:18px}
-  .pausemark b{width:26px;height:46px}
-  .pausemark em{font-size:14px}
+  .clock #tm-time{font-size:24px}
+  .clock em{font-size:14px}
+  .tmbtns{flex-wrap:wrap}
+  .tmbtns .btn{flex:1 1 42%}
 }
 
 

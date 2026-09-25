@@ -159,6 +159,7 @@ let UI = {
   region: localStorage.getItem('mls_region') || MAPS[0].region,
   map: localStorage.getItem('mls_map') || '',
   tab: localStorage.getItem('mls_tab') || 'plan',
+  mult: Number(localStorage.getItem('mls_mult')) || 1,
 }
 let saveTimer = null
 
@@ -651,6 +652,10 @@ document.addEventListener('change', e => {
     UI.map = e.target.value
     localStorage.setItem('mls_map', UI.map)
   }
+  if (e.target.id === 'mp-mult') {
+    UI.mult = Number(e.target.value) || 1
+    localStorage.setItem('mls_mult', String(UI.mult))
+  }
 })
 
 document.addEventListener('toggle', e => {
@@ -748,11 +753,19 @@ function mapPicker() {
   const regOpts = MAPS.map(g => `<option value="${g.region}" ${g.region === reg.region ? 'selected' : ''}>${g.region}</option>`).join('')
   const mapOpts = ['<option value="">（不填）</option>']
     .concat(reg.maps.map(m => `<option value="${m.n}" ${m.n === UI.map ? 'selected' : ''}>${esc(m.n)}</option>`)).join('')
+  // 经验卡/活动的倍率。开卡和裸练的数据不能混在一起算，所以它和地图一样是段的属性
+  const multOpts = MULTS.map(m =>
+    `<option value="${m}" ${m === UI.mult ? 'selected' : ''}>${multText(m)}</option>`).join('')
   return `<div class="field" style="flex:1 1 130px"><label>地区</label>
       <select id="mp-region">${regOpts}</select></div>
-    <div class="field" style="flex:1 1 170px"><label>现在在哪练</label>
-      <select id="mp-map">${mapOpts}</select></div>`
+    <div class="field" style="flex:1 1 160px"><label>现在在哪练</label>
+      <select id="mp-map">${mapOpts}</select></div>
+    <div class="field" style="flex:0 0 100px"><label>经验倍率</label>
+      <select id="mp-mult">${multOpts}</select></div>`
 }
+
+const MULTS = [1, 1.5, 2, 3, 4]
+const multText = m => m === 1 ? '裸练 1x' : m + 'x'
 
 const totalTo200 = (lv, exp) => expBetween(lv, exp, 200)
 const gainBetween = (a, b) => totalTo200(a.level, a.exp) - totalTo200(b.level, b.exp)
@@ -802,7 +815,8 @@ function segmentsOf(points) {
       continue
     }
     segs.push({ dt, gain, rate: rateOf(gain, dt), at: points[i].ms,
-                fromLevel: points[i - 1].level, level: points[i].level, map: points[i - 1].map || '' })
+                fromLevel: points[i - 1].level, level: points[i].level,
+                map: points[i - 1].map || '', mult: points[i - 1].mult || 1 })
   }
   return segs
 }
@@ -919,12 +933,12 @@ function timerPanel(c) {
     ? `<button class="btn primary" id="tm-start">开始</button>`
     : state === 'running'
       ? `<button class="btn" id="tm-mark">记一笔</button>
-         ${pts.length > 1 ? '<button class="btn ghost" id="tm-undo">撤销上一笔</button>' : ''}
+         ${pts.length > 1 ? '<button class="btn ghost" id="tm-undo">撤销</button>' : ''}
          <button class="btn" id="tm-pause">暂停</button>
          <button class="btn danger" id="tm-stop">终止</button>`
       : `<button class="btn primary" id="tm-resume">继续</button>
          <button class="btn" id="tm-mark">记一笔</button>
-         ${pts.length > 1 ? '<button class="btn ghost" id="tm-undo">撤销上一笔</button>' : ''}
+         ${pts.length > 1 ? '<button class="btn ghost" id="tm-undo">撤销</button>' : ''}
          <button class="btn danger" id="tm-stop">终止</button>`
 
   const live = pts.length >= 2
@@ -938,12 +952,11 @@ function timerPanel(c) {
       : `<div class="hint" style="margin-top:8px">已经记了起点。再「记一笔」就能算出效率了。按 <b>空格</b> 暂停 / 继续。</div>`)
 
   return `<section class="panel">
-    <div class="panel-t">练级计时器<span class="sub">${label}</span></div>
+    <div class="panel-t">练级计时器${pts.length ? `<span class="sub">${pts.length} 个打点</span>` : ''}</div>
     <div class="clock ${state}">
-      <span id="tm-time">${fmtDur(ms)}</span>
-      ${state === 'paused'
-        ? '<i class="pausemark" aria-label="已暂停"><span><b></b><b></b></span><em>暂停中 · 按空格继续</em></i>'
-        : ''}
+      <i class="dot" aria-hidden="true"></i>
+      <span id="tm-time" class="en">${fmtDur(ms)}</span>
+      <em>${state === 'running' ? '计时中' : state === 'paused' ? '暂停中 · 空格继续' : '没在计时'}</em>
     </div>
     <div class="row" style="margin-top:12px">
       <div class="field" style="flex:0 0 110px"><label>当前等级</label>
@@ -953,8 +966,8 @@ function timerPanel(c) {
     </div>
     <div class="row" style="margin-top:8px">
       ${mapPicker()}
-      ${btns}
     </div>
+    <div class="tmbtns">${btns}</div>
     ${live}
   </section>`
 }
@@ -966,15 +979,16 @@ function levelMapStats(c) {
     for (const sg of segmentsOf(s.points)) {
       if (sg.dt <= 0) continue
       const map = sg.map || '（没填地图）'
-      const key = sg.fromLevel + '\u0000' + map
-      const a = acc[key] || (acc[key] = { level: sg.fromLevel, map, ms: 0, gain: 0, segs: 0 })
+      const mult = sg.mult || 1
+      const key = sg.fromLevel + '\u0000' + map + '\u0000' + mult
+      const a = acc[key] || (acc[key] = { level: sg.fromLevel, map, mult, ms: 0, gain: 0, segs: 0 })
       a.ms += sg.dt; a.gain += sg.gain; a.segs++
     }
   }
   // 等级高的在上；同一级按经验收入多的在上
   return Object.values(acc)
     .map(a => ({ ...a, rate: rateOf(a.gain, a.ms) }))
-    .sort((x, y) => y.level - x.level || y.gain - x.gain)
+    .sort((x, y) => y.level - x.level || x.mult - y.mult || y.gain - x.gain)
 }
 
 function statsPanel(c) {
@@ -987,18 +1001,19 @@ function statsPanel(c) {
   const body = rows.map(r => `<tr>
       <td class="lv">Lv.${r.level}</td>
       <td style="text-align:left">${esc(r.map)}<div class="hint" style="font-size:13px">${esc(regionOf(r.map) || '—')}</div></td>
+      <td>${r.mult > 1 ? `<span class="multtag">${r.mult}x</span>` : '<span class="hint">裸练</span>'}</td>
       <td><div class="rank-bar" style="min-width:60px"><i style="width:${Math.round(Math.abs(r.rate) / max * 100)}%"></i></div></td>
       <td class="en ${r.rate < 0 ? 'neg' : ''}">${signed(r.rate)}/h</td>
       <td class="en">${signed(r.gain)}</td>
       <td class="en">${fmtShort(r.ms)}</td>
     </tr>`).join('')
   return `<section class="panel">
-    <div class="panel-t">效率记录<span class="sub">${rows.length} 个「等级 + 地图」组合</span></div>
+    <div class="panel-t">效率记录<span class="sub">${rows.length} 个「等级 + 地图 + 倍率」组合</span></div>
     <div class="tablewrap"><table class="statstable">
-      <thead><tr><th>等级</th><th style="text-align:left">地图</th><th>效率</th><th>经验/小时</th><th>累计经验</th><th>时长</th></tr></thead>
+      <thead><tr><th>等级</th><th style="text-align:left">地图</th><th>倍率</th><th>效率</th><th>经验/小时</th><th>累计经验</th><th>时长</th></tr></thead>
       <tbody>${body}</tbody>
     </table></div>
-    <div class="hint" style="margin-top:8px">同一级在同一张图上的所有练级段合并算，按时长加权。等级高的排在上面，同一级按累计经验多的在上。</div>
+    <div class="hint" style="margin-top:8px">主键是「等级 + 地图 + 倍率」—— 开经验卡和裸练分开统计，不会混着拉平均。按时长加权，等级高的在上。</div>
   </section>`
 }
 
@@ -1026,7 +1041,13 @@ function sessionsPanel(c) {
 function readTimerInput() {
   const lv = clamp(parseInt(document.getElementById('tm-lv').value, 10) || 1, 1, 200)
   const sel = document.getElementById('mp-map')
-  return { level: lv, exp: readExpInput(lv, document.getElementById('tm-exp').value), map: sel ? sel.value : '' }
+  const ms = document.getElementById('mp-mult')
+  return {
+    level: lv,
+    exp: readExpInput(lv, document.getElementById('tm-exp').value),
+    map: sel ? sel.value : '',
+    mult: ms ? Number(ms.value) || 1 : 1,
+  }
 }
 
 function tmStart() {
