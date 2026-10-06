@@ -988,7 +988,8 @@ function levelMapStats(c) {
   // 等级高的在上；同一级按经验收入多的在上
   return Object.values(acc)
     .map(a => ({ ...a, rate: rateOf(a.gain, a.ms) }))
-    .sort((x, y) => y.level - x.level || x.mult - y.mult || y.gain - x.gain)
+    // 等级高的在上；同一级按累计经验多的在上（倍率不参与排序）
+    .sort((x, y) => y.level - x.level || y.gain - x.gain)
 }
 
 function statsPanel(c) {
@@ -1013,7 +1014,7 @@ function statsPanel(c) {
       <thead><tr><th>等级</th><th style="text-align:left">地图</th><th>倍率</th><th>效率</th><th>经验/小时</th><th>累计经验</th><th>时长</th></tr></thead>
       <tbody>${body}</tbody>
     </table></div>
-    <div class="hint" style="margin-top:8px">主键是「等级 + 地图 + 倍率」—— 开经验卡和裸练分开统计，不会混着拉平均。按时长加权，等级高的在上。</div>
+    <div class="hint" style="margin-top:8px">主键是「等级 + 地图 + 倍率」—— 开经验卡和裸练分开统计，不会混着拉平均。按时长加权。排序：等级从高到低，同一级按累计经验从多到少。</div>
   </section>`
 }
 
