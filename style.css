@@ -353,3 +353,8 @@ td.neg{color:var(--red)}
   .overall-v{order:2;margin-left:auto;font-size:15px}
   .overall .bar{order:3;flex:1 1 100%}
 }
+
+/* 计划面板里的小节标题 */
+.plan-k{display:flex;align-items:baseline;gap:10px;margin-bottom:6px;
+  font-size:17px;color:var(--wood-d)}
+.plan-k-sub{font-size:15px;color:var(--muted)}

@@ -413,18 +413,41 @@ function todayPanel(c, k) {
 }
 
 function planPanel(c, k) {
+  // 目标等级只能选比当前高的 —— 选个已经过了的等级没有意义
+  const minT = Math.min(200, k.cur.level + 1)
   const opts = []
-  for (let l = 2; l <= 200; l++) opts.push(`<option value="${l}" ${l === c.targetLevel ? 'selected' : ''}>Lv.${l}</option>`)
+  for (let l = minT; l <= 200; l++) {
+    opts.push(`<option value="${l}" ${l === c.targetLevel ? 'selected' : ''}>Lv.${l}</option>`)
+  }
   const picks = SPRITE_KEYS.map(key =>
     `<div class="pick ${key === c.sprite ? 'on' : ''}" data-sprite="${key}" title="${SPRITES[key].label}">${spriteSVG(key)}</div>`).join('')
+  const sCap = expAt(c.startLevel)
+  const sPct = sCap > 0 ? (c.startExp / sCap * 100).toFixed(2) : '0.00'
+
   return `<section class="panel">
-    <div class="panel-t">目标设置</div>
+    <div class="panel-t">计划<span class="sub">${c.startDate} → ${c.targetDate}</span></div>
+
+    <div class="plan-k">目标</div>
     <div class="row">
       <div class="field"><label>目标等级</label><select id="in-tlv">${opts.join('')}</select></div>
       <div class="field"><label>目标日期</label><input type="date" id="in-tdate" value="${c.targetDate}"></div>
       <button class="btn primary" id="btn-target">更新目标</button>
     </div>
-    <div class="hint" style="margin-top:8px">原计划每天升 <b class="en">${(k.lvPerDayPlan * 100).toFixed(1)}%</b> 一级 · 计划总长 <b class="en">${k.totalDays}</b> 天 · 已过 <b class="en">${k.elapsed}</b> 天</div>
+    <div class="hint" style="margin-top:6px">原计划每天升 <b class="en">${(k.lvPerDayPlan * 100).toFixed(1)}%</b> 一级 · 计划总长 <b class="en">${k.totalDays}</b> 天 · 已过 <b class="en">${k.elapsed}</b> 天</div>
+
+    <div class="sep"></div>
+
+    <div class="plan-k">起点<span class="plan-k-sub">现在是 ${fmtPos({ level: c.startLevel, exp: c.startExp })} · ${c.startDate}</span></div>
+    <div class="row">
+      <div class="field"><label>起点日期</label><input type="date" id="in-sdate" value="${c.startDate}"></div>
+      <div class="field" style="flex:0 0 100px"><label>起点等级</label>
+        <input type="text" inputmode="numeric" class="numin" id="in-slv" value="${c.startLevel}"></div>
+      <div class="field" style="flex:0 0 130px"><label>本级经验（%）</label>
+        <input type="text" inputmode="numeric" class="numin pctin" id="in-spct" value="${sPct}"></div>
+      <button class="btn ghost" id="btn-start">重设起点</button>
+    </div>
+    <div class="hint" style="margin-top:6px">起点决定「已升多少级」和进度条从哪算起，改了会整体重算。打卡记录和练级记录都保留。</div>
+
     <div class="sep"></div>
     <details class="more">
       <summary>角色设置</summary>
@@ -435,13 +458,7 @@ function planPanel(c, k) {
       </div>
       <div class="field" style="margin-top:10px"><label>头像</label><div class="picks">${picks}</div></div>
       <div class="sep"></div>
-      <div class="row">
-        <div class="field"><label>计划起点日期</label><input type="date" id="in-sdate" value="${c.startDate}"></div>
-        <div class="field" style="flex:0 0 110px"><label>起点等级</label><input type="text" inputmode="numeric" class="numin" id="in-slv" value="${c.startLevel}"></div>
-        <button class="btn ghost" id="btn-start">重设起点</button>
-        <button class="btn danger" id="btn-del">删除角色</button>
-      </div>
-      <div class="hint" style="margin-top:6px">重设起点会把「已打经验」和进度条从新起点重新算，打卡记录保留。</div>
+      <button class="btn danger" id="btn-del">删除角色</button>
     </details>
   </section>`
 }
@@ -724,8 +741,10 @@ function updateName() {
 function resetStart() {
   const c = activeChar()
   const lv = clamp(parseInt(document.getElementById('in-slv').value, 10) || 1, 1, 200)
+  const cap = expAt(lv)
+  const pct = clamp(Number(document.getElementById('in-spct').value) || 0, 0, 100)
   c.startLevel = lv
-  c.startExp = clamp(c.startExp, 0, Math.max(0, expAt(lv) - 1))
+  c.startExp = clamp(Math.round(cap * pct / 100), 0, Math.max(0, cap - 1))
   const d = document.getElementById('in-sdate').value
   if (d) c.startDate = d
   if (c.targetLevel <= c.startLevel) c.targetLevel = Math.min(200, c.startLevel + 1)
