@@ -358,3 +358,8 @@ td.neg{color:var(--red)}
 .plan-k{display:flex;align-items:baseline;gap:10px;margin-bottom:6px;
   font-size:17px;color:var(--wood-d)}
 .plan-k-sub{font-size:15px;color:var(--muted)}
+
+/* 管理模式里的排序按钮 */
+.mrow-ord{display:flex;gap:4px;flex:0 0 auto}
+.mrow-ord .btn{padding:4px 9px;min-width:34px}
+.mrow-ord .btn:disabled{opacity:.3;cursor:default}
