@@ -363,3 +363,58 @@ td.neg{color:var(--red)}
 .mrow-ord{display:flex;gap:4px;flex:0 0 auto}
 .mrow-ord .btn{padding:4px 9px;min-width:34px}
 .mrow-ord .btn:disabled{opacity:.3;cursor:default}
+
+/* ── 升级热力图 ──
+   格子 = 一天，深浅 = 那天升了多少级。窄屏不缩小，横向滚动（同 .cchart 的思路） */
+.hmwrap{margin-top:4px;background:#fff;padding:10px 8px 6px;overflow-x:auto;box-shadow:0 0 0 3px var(--ink)}
+.hmsvg{display:block;height:auto;width:100%;font-family:'Zpix',monospace}
+.hmsvg .hm{shape-rendering:crispEdges;cursor:pointer;stroke:rgba(58,42,30,.18);stroke-width:1}
+.hmsvg .hm.none{fill:#F6EFDF}
+.hmsvg .hm.gs{fill:#F6EFDF}
+.hmsvg .hm.g0{fill:#E3D6BC}
+.hmsvg .hm.g1{fill:#CBEA9C}
+.hmsvg .hm.g2{fill:#8FD05C}
+.hmsvg .hm.g3{fill:#5FAF3A}
+.hmsvg .hm.g4{fill:#3D7E22}
+.hmsvg .hm.today{stroke:var(--orange);stroke-width:2}
+.hmsvg .hm.sel{stroke:var(--ink);stroke-width:3}
+.hmsvg .hm-s{fill:var(--gold);stroke:var(--ink);stroke-width:1;shape-rendering:crispEdges}
+.hmsvg .hm-m{fill:var(--wood-d);font-size:13px}
+.hmsvg .hm-w{fill:var(--muted);font-size:12px;text-anchor:end}
+.hmlegend{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-top:8px;font-size:14px;color:var(--muted)}
+.hmlegend i{width:13px;height:13px;display:inline-block;box-shadow:0 0 0 1px rgba(58,42,30,.25)}
+.hmlegend span+i.g0{margin-left:12px}
+.hmlegend i.g0{background:#E3D6BC}.hmlegend i.g1{background:#CBEA9C}.hmlegend i.g2{background:#8FD05C}
+.hmlegend i.g3{background:#5FAF3A}.hmlegend i.g4{background:#3D7E22}
+.hmlegend i.none{background:#F6EFDF;margin-left:8px}
+.hmlegend i.sdot{width:7px;height:7px;background:var(--gold);box-shadow:0 0 0 1px var(--ink);margin-left:8px}
+
+/* 周几分布 */
+.wk{display:flex;flex-direction:column;gap:4px}
+.wkrow{display:flex;align-items:center;gap:10px;font-size:15px;color:var(--wood-d)}
+.wkrow>span:first-child{flex:0 0 40px}
+.wkrow>span:last-child{flex:0 0 auto;min-width:70px;white-space:nowrap;text-align:right;font-size:13px;color:var(--ink)}
+.wkrow .rank-bar{height:14px}
+
+/* 目标历史的状态标签 */
+.gtag{flex:0 0 auto;font-size:14px;padding:0 8px;background:var(--paper);box-shadow:0 0 0 2px var(--ink)}
+.gtag.on{background:var(--blue);color:#fff}
+.gtag.done{background:var(--gold)}
+.logline .neg{color:var(--red)}
+
+/* 平日记录：刚达成目标时的那一条 */
+.donebox{margin:4px 0 8px;padding:8px 10px;font-size:17px;line-height:1.7;background:var(--gold);
+  box-shadow:0 0 0 3px var(--ink),inset 0 0 0 2px #fff}
+.chk{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:17px;color:var(--wood-d);cursor:pointer}
+.chk input{width:20px;height:20px}
+.stats.four{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+@media(max-width:620px){ .stats.four .v{font-size:22px} }
+/* 小节标题窄屏时副标题整段换到下一行，别把标题本身挤成一字一行 */
+.plan-k{flex-wrap:wrap;row-gap:0}
+.plan-k>.plan-k-sub{flex:1 1 auto}
+.logline .d{white-space:nowrap}
+.logline .glv{white-space:nowrap;font-size:16px}
+@media(max-width:620px){
+  .logline{flex-wrap:wrap;row-gap:0}
+  .logline .d{font-size:13px}
+}

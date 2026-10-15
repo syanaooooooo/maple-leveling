@@ -192,12 +192,14 @@ let UI = {
   region: localStorage.getItem('mls_region') || MAPS[0].region,
   map: localStorage.getItem('mls_map') || '',
   tab: localStorage.getItem('mls_tab') || 'plan',
+  hday: null,
   mult: Number(localStorage.getItem('mls_mult')) || 1,
 }
 let saveTimer = null
 
 function loadLocal() {
   try { const r = localStorage.getItem(LS); if (r) S = Object.assign(S, JSON.parse(r)) } catch (e) { console.warn(e) }
+  migrateAll()
 }
 function save(push = true) {
   S.updated_at = new Date().toISOString()
@@ -226,10 +228,108 @@ function readBackups() {
   try { return JSON.parse(localStorage.getItem(LS_BAK) || '[]') } catch (e) { return [] }
 }
 
+/* ───────────────── 记录（marks） ─────────────────
+   原来一天只能有一条打卡（c.logs[date] 会被覆盖）。现在改成一条条的流水 c.marks，
+   一天想记几次记几次，每条带时间。
+
+   c.logs 还在，变成**派生的镜像**（每天最后一条）—— 不是冗余偷懒：
+   另一台机器可能还吃着缓存跑旧代码，旧代码只认 c.logs。
+   镜像留着，旧代码读到的仍是对的，不会「看见空的」再同步回来把数据冲掉。 */
+
+const nowLocal = () => {
+  const d = new Date()
+  return iso(d) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes())
+}
+// 排序键：老数据没有时刻，当成那天最早的一笔（迁移时它确实在新记录之前）
+const markKey = m => m.at || (m.d + 'T00:00')
+const sortedMarks = c => (c.marks || []).slice().sort((a, b) => markKey(a) < markKey(b) ? -1 : markKey(a) > markKey(b) ? 1 : 0)
+// 跨时区/跨格式都能拿到「本地的那一天」：UTC 的 ISO 和不带偏移的本地 ISO 都吃得下
+const localDay = s => { const d = new Date(s); return isNaN(d) ? String(s).slice(0, 10) : iso(d) }
+
+// 老数据迁移 + 新字段补齐。返回有没有动过，动过才需要存
+function migrateChar(c) {
+  let changed = false
+  if (!Array.isArray(c.marks)) {
+    c.marks = Object.keys(c.logs || {}).sort().map(d => ({
+      id: 'm' + d, d, at: null, level: c.logs[d].level, exp: c.logs[d].exp
+    }))
+    changed = true
+  }
+  // 另一台机器吃着缓存跑旧代码时，打卡只写进 c.logs。和 marks 对不上的那天补一笔，
+  // 时刻记成当天 23:59 —— 让它成为那天最后一笔，下次加载就对得上，不会重复补
+  const lastOfDay = {}
+  for (const m of sortedMarks(c)) lastOfDay[m.d] = m
+  for (const d of Object.keys(c.logs || {})) {
+    const L = c.logs[d], m = lastOfDay[d]
+    if (L && (!m || m.level !== L.level || m.exp !== L.exp)) {
+      c.marks.push({ id: 'm' + d + '_' + L.level + '_' + L.exp, d, at: d + 'T23:59', level: L.level, exp: L.exp })
+      changed = true
+    }
+  }
+  if (!Array.isArray(c.goals)) { c.goals = []; changed = true }
+  // 以前的角色一定有目标；没有目标等级的（理论上不存在）算平日记录
+  if (typeof c.goalOn !== 'boolean') { c.goalOn = !!(c.targetLevel && c.targetDate); changed = true }
+  // 别处早就打到目标的，这里补归档。只改内存不立刻存 —— 启动时一存就会把本地
+  // updated_at 抬高，压过另一台机器上可能更新的云端数据。下一次真实操作时一起存
+  if (checkGoalDone(c)) changed = true
+  return changed
+}
+function migrateAll() {
+  let changed = false
+  for (const c of S.chars || []) if (migrateChar(c)) changed = true
+  return changed
+}
+
+// 重建 c.logs 镜像：每天保留最后一条
+function syncLogs(c) {
+  const o = {}
+  for (const m of sortedMarks(c)) o[m.d] = { level: m.level, exp: m.exp }
+  c.logs = o
+}
+
+function pushMark(c, level, exp) {
+  c.marks = c.marks || []
+  c.marks.push({
+    id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    d: today(), at: nowLocal(), level, exp
+  })
+  syncLogs(c)
+  return checkGoalDone(c)
+}
+
 function currentOf(c) {
-  const ds = Object.keys(c.logs || {}).sort()
-  if (ds.length) { const d = ds[ds.length - 1]; return { ...c.logs[d], date: d } }
+  const ms = sortedMarks(c)
+  if (ms.length) { const m = ms[ms.length - 1]; return { level: m.level, exp: m.exp, date: m.d } }
   return { level: c.startLevel, exp: c.startExp, date: c.startDate }
+}
+
+/* ── 目标生命周期 ──
+   goalOn=true 期间每一笔记录都算进目标；达成就自动归档进 c.goals，
+   goalOn 变 false，回到平日记录。不用切页面，也不用手动点「完成」。 */
+function archiveGoal(c, how) {
+  let end = currentOf(c)
+  let endDate = today()
+  if (how === '达成') {
+    // 用「第一次够到目标」的那一笔，不是今天 —— 老数据可能早就达成了，只是现在才归档
+    const hit = sortedMarks(c).find(m => m.d >= c.startDate && levelFloat(m.level, m.exp) + 1e-9 >= c.targetLevel)
+    if (hit) { end = hit; endDate = hit.d }
+  }
+  c.goals = c.goals || []
+  c.goals.push({
+    id: 'g' + Date.now().toString(36),
+    startDate: c.startDate, startLevel: c.startLevel, startExp: c.startExp,
+    targetLevel: c.targetLevel, targetDate: c.targetDate,
+    endDate, endLevel: end.level, endExp: end.exp,
+    how
+  })
+  c.goalOn = false
+}
+function checkGoalDone(c) {
+  if (!c.goalOn) return false
+  const cur = currentOf(c)
+  if (levelFloat(cur.level, cur.exp) + 1e-9 < c.targetLevel) return false
+  archiveGoal(c, '达成')
+  return true
 }
 
 function compute(c) {
@@ -270,12 +370,13 @@ function compute(c) {
   const finished = remain <= 0
 
   // ── 今日 ──
-  // 今天开始时的位置：今天之前最后一条打卡，没有就用计划起点
-  const ds = Object.keys(c.logs || {}).sort()
-  const prevD = ds.filter(d => d < t).pop()
-  const dayFrom = prevD ? c.logs[prevD] : { level: c.startLevel, exp: c.startExp }
-  // 现在的位置：今天的打卡；计时器里有更靠前的打点就用打点，这样练级中进度条也会动
-  let dayNow = c.logs && c.logs[t] ? c.logs[t] : dayFrom
+  // 今天开始时的位置：今天之前最后一条记录，没有就用计划起点
+  const ms = sortedMarks(c)
+  const before = ms.filter(m => m.d < t)
+  const dayFrom = before.length ? before[before.length - 1] : { level: c.startLevel, exp: c.startExp }
+  // 现在的位置：今天最后一条记录；计时器里有更靠前的打点就用打点，这样练级中进度条也会动
+  const inToday = ms.filter(m => m.d === t)
+  let dayNow = inToday.length ? inToday[inToday.length - 1] : dayFrom
   const tp = c.timer && c.timer.points && c.timer.points[c.timer.points.length - 1]
   if (tp && expBetween(tp.level, tp.exp, 200) < expBetween(dayNow.level, dayNow.exp, 200)) dayNow = tp
   const todayGain = Math.max(0,
@@ -303,7 +404,7 @@ function tabBar() {
   const t = UI.tab === 'log' ? 'log' : 'plan'
   return `<section class="panel tabs">
     <button class="tabbtn ${t === 'plan' ? 'on' : ''}" data-tab="plan">计划</button>
-    <button class="tabbtn ${t === 'log' ? 'on' : ''}" data-tab="log">效率记录</button>
+    <button class="tabbtn ${t === 'log' ? 'on' : ''}" data-tab="log">记录</button>
   </section>`
 }
 
@@ -311,11 +412,21 @@ function render() {
   if (!S.chars.length) { app().innerHTML = recoverBanner() + welcomeView(); return }
   const c = activeChar()
   if (!c) { S.activeId = S.chars[0].id }
-  const k = compute(c)
-  const view = UI.tab === 'log'
-    ? statsPanel(c) + sessionsPanel(c)
-    : overview(c, k) + todayPanel(c, k) + timerPanel(c) + planPanel(c, k) + logsPanel(c) + tablePanel(c, k)
+  let view
+  if (UI.tab === 'log') {
+    // 「记录」tab 管回顾：热力图 → 目标历史 → 流水 → 效率 → 练级存档
+    view = heatPanel(c) + goalsPanel(c) + marksPanel(c) + statsPanel(c) + sessionsPanel(c)
+  } else if (c.goalOn) {
+    const k = compute(c)
+    view = overview(c, k) + markPanel(c, k) + timerPanel(c) + planPanel(c, k) + tablePanel(c, k)
+  } else {
+    // 平日记录：同一个「记一笔」入口，只是没有目标压着
+    view = idlePanel(c) + markPanel(c, null) + timerPanel(c) + charSettings(c)
+  }
   app().innerHTML = charBar() + tabBar() + view
+  // 窄屏下热力图横滚，默认停在最右（最近几周），老的往左翻
+  const hw = document.querySelector('.hmwrap')
+  if (hw) hw.scrollLeft = hw.scrollWidth
   syncTick()
 }
 
@@ -325,7 +436,7 @@ function charBar() {
     const cur = currentOf(c)
     return `<div class="chip ${c.id === S.activeId ? 'on' : ''}" data-pick="${c.id}">
       ${spriteSVG(c.sprite)}
-      <span><b>${esc(c.name)}</b><small class="en">Lv.${cur.level} → ${c.targetLevel}</small></span>
+      <span><b>${esc(c.name)}</b><small class="en">Lv.${cur.level}${c.goalOn ? ' → ' + c.targetLevel : ''}</small></span>
     </div>`
   }).join('')
   return `<section class="panel">
@@ -339,8 +450,8 @@ function charBar() {
 function manageBar() {
   const rows = S.chars.map(c => {
     const cur = currentOf(c)
-    const k = compute(c)
     const i = S.chars.indexOf(c)
+    const prog = c.goalOn ? compute(c).pct.toFixed(0) + '%' : '平日记录'
     return `<div class="mrow">
       <span class="mrow-ord">
         <button class="btn tiny" data-move="${c.id}" data-dir="-1" ${i === 0 ? 'disabled' : ''} title="往前挪">←</button>
@@ -348,8 +459,8 @@ function manageBar() {
       </span>
       <span class="mrow-s">${spriteSVG(c.sprite)}</span>
       <input type="text" class="mrow-name" data-rename="${c.id}" value="${esc(c.name)}">
-      <span class="mrow-i en">Lv.${cur.level} → ${c.targetLevel}</span>
-      <span class="mrow-i hint">${k.pct.toFixed(0)}% · ${(c.sessions || []).length} 次练级</span>
+      <span class="mrow-i en">Lv.${cur.level}${c.goalOn ? ' → ' + c.targetLevel : ''}</span>
+      <span class="mrow-i hint">${prog} · ${(c.marks || []).length} 笔 · ${(c.sessions || []).length} 次练级</span>
       <button class="btn tiny danger" data-del="${c.id}">删除</button>
     </div>`
   }).join('')
@@ -357,7 +468,7 @@ function manageBar() {
     <div class="panel-t">管理角色<span class="sub">${S.chars.length} 个</span>
       <button class="btn tiny" id="manage-off" style="margin-left:8px">完成</button></div>
     <div class="mlist">${rows}</div>
-    <div class="hint" style="margin-top:10px">← → 调角色条里的先后顺序。改完名字点别处就存上了。删除会连着这个角色的打卡和练级记录一起没掉，不能撤销。</div>
+    <div class="hint" style="margin-top:10px">← → 调角色条里的先后顺序。改完名字点别处就存上了。删除会连着这个角色的记录和练级存档一起没掉，不能撤销。</div>
   </section>`
 }
 
@@ -420,14 +531,20 @@ function overview(c, k) {
   </section>`
 }
 
-function todayPanel(c, k) {
-  const cur = k.cur
+// 记一笔 —— 有目标没目标都是同一个入口。
+// 有目标：这笔算进目标进度。没目标：就是平日流水，照样进热力图
+function markPanel(c, k) {
+  const cur = k ? k.cur : currentOf(c)
   const cap = expAt(cur.level)
   const unitPct = UI.expUnit === 'pct'
   const val = unitPct ? (cap > 0 ? (cur.exp / cap * 100).toFixed(2) : '0') : cur.exp
-  const loggedToday = (c.logs || {})[today()]
+  const mine = (c.marks || []).filter(m => m.d === today())
+  const last = mine.length ? mine[mine.length - 1] : null
+  const sub = mine.length
+    ? `${today()} · 今天记了 ${mine.length} 笔${last && last.at ? '，最后一笔 ' + last.at.slice(11) : ''}`
+    : today()
   return `<section class="panel">
-    <div class="panel-t">今日打卡<span class="sub">${today()}${loggedToday ? ' · 今天已记录' : ''}</span></div>
+    <div class="panel-t">记一笔<span class="sub">${sub}</span></div>
     <div class="row">
       <div class="field" style="flex:0 0 110px">
         <label>当前等级</label>
@@ -444,9 +561,10 @@ function todayPanel(c, k) {
           <button data-unit="raw" class="${unitPct ? '' : 'on'}">经验值</button>
         </div>
       </div>
-      <button class="btn primary" id="btn-log">记录</button>
+      <button class="btn primary" id="btn-log">记一笔</button>
     </div>
-    <div class="hint" style="margin-top:8px">本级共需 <b class="en">${full(cap)}</b> 经验${cap > 0 ? `，还差 <b class="en">${full(Math.max(0, cap - cur.exp))}</b> 升下一级` : ''}</div>
+    <div class="hint" style="margin-top:8px">本级共需 <b class="en">${full(cap)}</b> 经验${cap > 0 ? `，还差 <b class="en">${full(Math.max(0, cap - cur.exp))}</b> 升下一级` : ''}。
+      一天想记几次记几次，每笔都带时刻，都会进「记录」里的热力图。${k ? '现在有目标在跑，这笔也算进目标进度。' : ''}</div>
   </section>`
 }
 
@@ -457,8 +575,6 @@ function planPanel(c, k) {
   for (let l = minT; l <= 200; l++) {
     opts.push(`<option value="${l}" ${l === c.targetLevel ? 'selected' : ''}>Lv.${l}</option>`)
   }
-  const picks = SPRITE_KEYS.map(key =>
-    `<div class="pick ${key === c.sprite ? 'on' : ''}" data-sprite="${key}" title="${SPRITES[key].label}">${spriteSVG(key)}</div>`).join('')
   const sCap = expAt(c.startLevel)
   const sPct = sCap > 0 ? (c.startExp / sCap * 100).toFixed(2) : '0.00'
 
@@ -484,10 +600,24 @@ function planPanel(c, k) {
         <input type="text" inputmode="numeric" class="numin pctin" id="in-spct" value="${sPct}"></div>
       <button class="btn ghost" id="btn-start">重设起点</button>
     </div>
-    <div class="hint" style="margin-top:6px">起点决定「已升多少级」和进度条从哪算起，改了会整体重算。打卡记录和练级记录都保留。</div>
+    <div class="hint" style="margin-top:6px">起点决定「已升多少级」和进度条从哪算起，改了会整体重算。记录和练级存档都保留。</div>
 
     <div class="sep"></div>
-    <details class="more">
+    <div class="row" style="align-items:center">
+      <button class="btn ghost" id="btn-goal-end">结束这个目标</button>
+      <span class="hint">到达目标等级会自动结束。不想打了也可以手动结束，一样归档进「记录」里的目标历史。</span>
+    </div>
+
+    <div class="sep"></div>
+    ${charSettingsInner(c)}
+  </section>`
+}
+
+// 名字 / 职业 / 头像 / 删除 —— 有没有目标都要能改
+function charSettingsInner(c) {
+  const picks = SPRITE_KEYS.map(key =>
+    `<div class="pick ${key === c.sprite ? 'on' : ''}" data-sprite="${key}" title="${SPRITES[key].label}">${spriteSVG(key)}</div>`).join('')
+  return `<details class="more">
       <summary>角色设置</summary>
       <div class="row" style="margin-top:8px">
         <div class="field"><label>名字</label><input type="text" id="in-name" value="${esc(c.name)}"></div>
@@ -497,32 +627,275 @@ function planPanel(c, k) {
       <div class="field" style="margin-top:10px"><label>头像</label><div class="picks">${picks}</div></div>
       <div class="sep"></div>
       <button class="btn danger" id="btn-del">删除角色</button>
-    </details>
+    </details>`
+}
+const charSettings = c => `<section class="panel">${charSettingsInner(c)}</section>`
+
+/* ───────────────── 平日记录（没有目标的时候） ───────────────── */
+const WEEK = ['日', '一', '二', '三', '四', '五', '六']
+const pctLv = n => (n * 100).toFixed(1) + '%'
+// 累计值（7 天 / 30 天 / 周几合计）常常超过一级，「150.9% 一级」读着别扭，改说「1.51 级」
+const sumLv = n => n >= 1 ? n.toFixed(2) + ' 级' : pctLv(n) + ' 一级'
+
+// 最后一次「等级变了」是哪天 —— 回答「多久没升级了」
+function lastLevelUp(c) {
+  const ms = sortedMarks(c)
+  for (let i = ms.length - 1; i > 0; i--) if (ms[i].level > ms[i - 1].level) return ms[i].d
+  return null
+}
+
+function idlePanel(c) {
+  const cur = currentOf(c)
+  const capP = expAt(cur.level) > 0 ? (cur.exp / expAt(cur.level) * 100).toFixed(2) : '0.00'
+  const gs = c.goals || []
+  const g = gs[gs.length - 1]
+  const recent = g && diffDays(g.endDate, today()) <= 7
+  const doneLine = recent
+    ? `<div class="donebox">${g.how === '达成' ? '🎉 目标达成' : '目标已结束'}：
+        <b class="en">Lv.${g.startLevel} → Lv.${g.endLevel}</b>，${mmdd(g.startDate)} → ${mmdd(g.endDate)}，用了 ${Math.max(1, diffDays(g.startDate, g.endDate))} 天。
+        现在是平日记录，想冲下一轮就在下面订个新目标。</div>` : ''
+
+  const days = dayStats(c)
+  const w7 = sumGain(days, addDays(today(), -6), today())
+  const up = lastLevelUp(c)
+  const upTxt = up ? (up === today() ? '今天刚升过级' : `上次升级是 ${diffDays(up, today())} 天前`) : '还没记到过升级'
+
+  const minT = Math.min(200, cur.level + 1)
+  const opts = []
+  for (let l = minT; l <= 200; l++) opts.push(`<option value="${l}" ${l === Math.min(200, cur.level + 5) ? 'selected' : ''}>Lv.${l}</option>`)
+
+  return `<section class="panel">
+    <div class="panel-t">平日记录<span class="sub">没有进行中的目标</span></div>
+    <div class="who">
+      <div class="who-face">${spriteSVG(c.sprite)}</div>
+      <div class="who-txt">
+        <div class="who-name">${esc(c.name)}${c.job ? ` <span class="hint">${esc(c.job)}</span>` : ''}</div>
+        <div class="who-lv en">Lv.${cur.level} · ${capP}%</div>
+      </div>
+      <span class="badge ontime">平日</span>
+    </div>
+    ${doneLine}
+    <div class="say">最近 7 天升了 <b class="en">${sumLv(w7)}</b> · ${upTxt}</div>
+
+    <div class="sep"></div>
+    <div class="plan-k">订个新目标<span class="plan-k-sub">起点就是现在 ${fmtPos(cur)}</span></div>
+    <div class="row">
+      <div class="field"><label>目标等级</label><select id="g-tlv">${opts.join('')}</select></div>
+      <div class="field"><label>目标日期</label><input type="date" id="g-tdate" value="${addDays(today(), 30)}"></div>
+      <button class="btn primary" id="btn-goal-new">开始这个目标</button>
+    </div>
   </section>`
 }
 
-function logsPanel(c) {
-  const ds = Object.keys(c.logs || {}).sort().reverse()
-  if (!ds.length) return `<section class="panel"><div class="panel-t">打卡记录</div><div class="empty">还没有记录。上面填一下当前等级和经验就开始了。</div></section>`
-  const rows = ds.map((d, i) => {
-    const cur = c.logs[d]
-    const prevD = ds[i + 1]
-    let gain = ''
-    if (prevD) {
-      const p = c.logs[prevD]
-      const g = expBetween(p.level, p.exp, 200) - expBetween(cur.level, cur.exp, 200)
-      if (g > 0) gain = `+${fmt(g)}`
+/* ───────────────── 记录 tab：热力图 + 分析 ───────────────── */
+
+// 按天汇总。一天的「升了多少级」= 当天最后一笔 − 前一个有记录的日子的最后一笔（净值）。
+// 用净值不用逐笔累加：中间记错一笔倒退的，逐笔累加会把回弹算成「又升了」
+function dayStats(c) {
+  const days = {}
+  const ms = sortedMarks(c)
+  let prevLF = null
+  let i = 0
+  while (i < ms.length) {
+    const d = ms[i].d
+    let n = 0, lastM = null
+    while (i < ms.length && ms[i].d === d) { lastM = ms[i]; n++; i++ }
+    const lf = levelFloat(lastM.level, lastM.exp)
+    const gain = prevLF === null ? 0 : Math.max(0, lf - prevLF)  // 第一天没有参照；死亡掉经验不算负
+    days[d] = { d, marks: n, gain, level: lastM.level, lf, sessMs: 0, sess: 0 }
+    prevLF = lf
+  }
+  for (const s of c.sessions || []) {
+    if (!s.startedAt) continue
+    const d = localDay(s.startedAt)
+    const a = days[d] || (days[d] = { d, marks: 0, gain: 0, level: null, lf: null, sessMs: 0, sess: 0 })
+    a.sessMs += s.ms || 0
+    a.sess++
+  }
+  return days
+}
+const sumGain = (days, from, to) =>
+  Object.values(days).reduce((t, x) => t + (x.d >= from && x.d <= to ? x.gain : 0), 0)
+// 「练了」的门槛：升了 0.5% 以上，或者那天有计时存档
+const isActive = x => x && (x.gain >= 0.005 || x.sessMs > 0)
+
+function analyze(days) {
+  const keys = Object.keys(days).sort()
+  const act = keys.filter(d => isActive(days[d]))
+  let best = null
+  for (const d of keys) if (!best || days[d].gain > best.gain) best = days[d]
+  // 连续练级：按日历天算，中间断一天就断
+  let longest = 0, run = 0, prev = null, longestEnd = null
+  for (const d of act) {
+    run = prev && diffDays(prev, d) === 1 ? run + 1 : 1
+    if (run > longest) { longest = run; longestEnd = d }
+    prev = d
+  }
+  // 当前连续：从今天（或昨天，今天还没练不算断）往回数
+  let streak = 0
+  const set = new Set(act)
+  let p = set.has(today()) ? today() : addDays(today(), -1)
+  while (set.has(p)) { streak++; p = addDays(p, -1) }
+  // 最长空窗：两个「练了」的日子之间隔了多少天没练
+  let gap = null
+  for (let i = 1; i < act.length; i++) {
+    const n = diffDays(act[i - 1], act[i]) - 1
+    if (n > 0 && (!gap || n > gap.n)) gap = { n, from: addDays(act[i - 1], 1), to: addDays(act[i], -1) }
+  }
+  const sinceLast = act.length ? diffDays(act[act.length - 1], today()) : null
+  // 周几分布：按周几把升的级数加起来
+  const wk = [0, 0, 0, 0, 0, 0, 0]
+  for (const d of keys) wk[parseD(d).getDay()] += days[d].gain
+  const total = keys.reduce((t, d) => t + days[d].gain, 0)
+  return { keys, act, best, longest, longestEnd, streak, gap, sinceLast, wk, total }
+}
+
+function heatSVG(days, sel) {
+  const alignMon = s => addDays(s, -((parseD(s).getDay() + 6) % 7))
+  const keys = Object.keys(days).sort()
+  const endMon = alignMon(today())
+  const MAXW = 53
+  // 至少画 20 周，记录少的时候也像个日历，不是孤零零几格
+  let startMon = alignMon(keys[0] || today())
+  let weeks = Math.floor(diffDays(startMon, endMon) / 7) + 1
+  if (weeks < 20) { startMon = addDays(endMon, -19 * 7); weeks = 20 }
+  if (weeks > MAXW) { startMon = addDays(endMon, -(MAXW - 1) * 7); weeks = MAXW }
+
+  const C = 14, ST = 17, GX = 30, GY = 24
+  const W = GX + weeks * ST + 4, H = GY + 7 * ST + 4
+  const gains = keys.filter(d => d >= startMon).map(d => days[d].gain).filter(g => g > 0)
+  // 色阶按自己的最大值走，但至少 0.3 级才算满格 —— 免得只记过一点点也全是深绿
+  const top = Math.max(0.3, ...gains)
+  const bucket = g => g <= 0 ? 0 : Math.min(4, Math.ceil(g / top * 4))
+
+  let cells = '', months = '', lastM = -1
+  for (let w = 0; w < weeks; w++) {
+    const mon = addDays(startMon, w * 7)
+    const m = parseD(mon).getMonth()
+    if (m !== lastM) {
+      months += `<text class="hm-m" x="${GX + w * ST}" y="15">${m + 1}月</text>`
+      lastM = m
     }
-    const capp = expAt(cur.level)
+    for (let r = 0; r < 7; r++) {
+      const d = addDays(mon, r)
+      if (d > today()) continue
+      const x = days[d]
+      const lv = x ? (x.marks ? (x.gain > 0 ? 'g' + bucket(x.gain) : 'g0') : 'gs') : 'none'
+      const tip = x
+        ? `${d} 周${WEEK[parseD(d).getDay()]} · ${x.marks ? '升 ' + pctLv(x.gain) + ' 一级 · ' + x.marks + ' 笔' : '没记等级'}${x.sess ? ' · 计时 ' + fmtShort(x.sessMs) : ''}`
+        : `${d} 周${WEEK[parseD(d).getDay()]} · 没有记录`
+      const X = GX + w * ST, Y = GY + r * ST
+      cells += `<rect class="hm ${lv}${d === today() ? ' today' : ''}${d === sel ? ' sel' : ''}" data-hday="${d}" x="${X}" y="${Y}" width="${C}" height="${C}"><title>${tip}</title></rect>`
+      if (x && x.sess) cells += `<rect class="hm-s" x="${X + C - 5}" y="${Y + C - 5}" width="4" height="4" pointer-events="none"/>`
+    }
+  }
+  const wl = [0, 2, 4].map(r => `<text class="hm-w" x="${GX - 8}" y="${GY + r * ST + 12}">${WEEK[(r + 1) % 7]}</text>`).join('')
+  return `<div class="hmwrap"><svg viewBox="0 0 ${W} ${H}" class="hmsvg" style="min-width:${W}px" xmlns="http://www.w3.org/2000/svg">${months}${wl}${cells}</svg></div>
+  <div class="hmlegend"><span>少</span><i class="g1"></i><i class="g2"></i><i class="g3"></i><i class="g4"></i><span>多</span>
+    <i class="g0"></i><span>记了没升</span><i class="none"></i><span>没记录</span><i class="sdot"></i><span>有计时</span></div>`
+}
+
+function heatPanel(c) {
+  const days = dayStats(c)
+  const A = analyze(days)
+  if (!A.keys.length) {
+    return `<section class="panel"><div class="panel-t">升级热力图</div>
+      <div class="empty">还没有记录。去「计划」里记一笔，这里就会开始长格子。</div></section>`
+  }
+  const sel = UI.hday && days[UI.hday] ? UI.hday : null
+  const sx = sel ? days[sel] : null
+  const detail = sx
+    ? `<div class="say"><b class="en">${sel}</b> 周${WEEK[parseD(sel).getDay()]} · ${sx.marks
+        ? `升了 <b class="en">${pctLv(sx.gain)}</b> 一级，收在 Lv.${sx.level} · 记了 ${sx.marks} 笔`
+        : '没记等级'}${sx.sess ? ` · 计时 ${sx.sess} 次共 ${fmtShort(sx.sessMs)}` : ''}</div>`
+    : `<div class="say">点格子看那天的详情</div>`
+
+  const w7 = sumGain(days, addDays(today(), -6), today())
+  const w30 = sumGain(days, addDays(today(), -29), today())
+  const up = lastLevelUp(c)
+  const upN = up ? diffDays(up, today()) : null
+
+  // 周几分布
+  const wmax = Math.max(...A.wk, 1e-9)
+  const order = [1, 2, 3, 4, 5, 6, 0]
+  const topW = order.reduce((b, i) => A.wk[i] > A.wk[b] ? i : b, 1)
+  const wkBars = order.map(i => `<div class="wkrow"><span>周${WEEK[i]}</span>
+      <div class="rank-bar"><i style="width:${(A.wk[i] / wmax * 100).toFixed(0)}%"></i></div>
+      <span class="en">${A.wk[i].toFixed(2)} 级</span></div>`).join('')
+
+  const span = diffDays(A.keys[0], today()) + 1
+  return `<section class="panel">
+    <div class="panel-t">升级热力图<span class="sub">格子越深，那天升得越多</span></div>
+    ${heatSVG(days, sel)}
+    ${detail}
+
+    <div class="stats four">
+      <div class="stat hero"><div class="k">最近 7 天升了</div><div class="v en">${sumLv(w7).replace(/ (一级|级)$/, '')}<small> ${w7 >= 1 ? '级' : '一级'}</small></div><div class="n">30 天共 ${sumLv(w30)}</div></div>
+      <div class="stat"><div class="k">连续练级</div><div class="v en">${A.streak}<small> 天</small></div><div class="n">最长 ${A.longest} 天${A.longestEnd ? '（到 ' + mmdd(A.longestEnd) + '）' : ''}</div></div>
+      <div class="stat"><div class="k">上次升级</div><div class="v">${upN === null ? '—' : upN === 0 ? '今天' : upN + '<small> 天前</small>'}</div><div class="n">${up ? up : '还没记到过'}</div></div>
+      <div class="stat"><div class="k">最猛的一天</div><div class="v en">${A.best && A.best.gain > 0 ? pctLv(A.best.gain) : '—'}</div><div class="n">${A.best && A.best.gain > 0 ? A.best.d + ' 周' + WEEK[parseD(A.best.d).getDay()] : '还没有'}</div></div>
+    </div>
+
+    <div class="plan-k" style="margin-top:14px">周几打得多<span class="plan-k-sub">按周几把升的级数加起来 · 最多的是周${WEEK[topW]}</span></div>
+    <div class="wk">${wkBars}</div>
+
+    <div class="hint" style="margin-top:10px">
+      ${A.keys.length} 天有记录，跨 ${span} 天，一共升了 <b class="en">${A.total.toFixed(2)}</b> 级${A.gap ? ` · 最长空窗 <b class="en">${A.gap.n}</b> 天（${mmdd(A.gap.from)} → ${mmdd(A.gap.to)}）` : ''}${A.sinceLast > 1 ? ` · 已经 ${A.sinceLast} 天没练了` : ''}。<br>
+      隔几天才记一次的话，中间打的会都算在记的那一天。
+    </div>
+  </section>`
+}
+
+function goalsPanel(c) {
+  const list = (c.goals || []).slice().reverse()
+  const cur = c.goalOn ? currentOf(c) : null
+  if (!list.length && !cur) return ''
+  const row = (g, live) => {
+    const end = live ? today() : g.endDate
+    const endLv = live ? cur.level : g.endLevel
+    const endExp = live ? cur.exp : g.endExp
+    const days = Math.max(1, diffDays(g.startDate, end))
+    const got = Math.max(0, levelFloat(endLv, endExp) - levelFloat(g.startLevel, g.startExp))
+    let tag, extra = ''
+    if (live) tag = '<span class="gtag on">进行中</span>'
+    else if (g.how === '达成') {
+      tag = '<span class="gtag done">达成</span>'
+      const early = diffDays(end, g.targetDate)
+      extra = early > 0 ? ` · 提前 ${early} 天` : early < 0 ? ` · 晚了 ${-early} 天` : ' · 正好当天'
+    } else tag = '<span class="gtag">结束</span>'
     return `<div class="logline">
-      <span class="d en">${d}</span>
-      <span class="en">Lv.${cur.level}</span>
-      <span class="hint">${capp > 0 ? (cur.exp / capp * 100).toFixed(1) + '%' : ''}</span>
-      <span class="g en">${gain}</span>
-      <button class="btn tiny" data-dellog="${d}">删</button>
+      ${tag}
+      <span class="en glv">Lv.${g.startLevel}→${g.targetLevel}</span>
+      <span class="hint">${mmdd(g.startDate)} → ${live ? '今天' : mmdd(end)} · ${days} 天 · 平均每天 ${pctLv(got / days)}${extra}</span>
     </div>`
-  }).join('')
-  return `<section class="panel"><div class="panel-t">打卡记录<span class="sub">${ds.length} 天</span></div><div class="logs">${rows}</div></section>`
+  }
+  const rows = (cur ? row(c, true) : '') + list.map(g => row(g, false)).join('')
+  const n = list.filter(g => g.how === '达成').length
+  return `<section class="panel"><div class="panel-t">目标历史<span class="sub">达成 ${n} 次</span></div>
+    <div class="logs">${rows}</div></section>`
+}
+
+function marksPanel(c) {
+  const ms = sortedMarks(c)
+  if (!ms.length) return ''
+  const rows = ms.map((m, i) => {
+    const p = ms[i - 1]
+    let gain = ''
+    if (p) {
+      const g = expBetween(p.level, p.exp, 200) - expBetween(m.level, m.exp, 200)
+      if (g > 0) gain = `+${fmt(g)}`
+      else if (g < 0) gain = `<span class="neg">−${fmt(-g)}</span>`
+    }
+    const capp = expAt(m.level)
+    return `<div class="logline">
+      <span class="d en">${m.d.slice(0, 4) === today().slice(0, 4) ? mmdd(m.d) : m.d}${m.at ? ' ' + m.at.slice(11) : ''}</span>
+      <span class="en">Lv.${m.level}</span>
+      <span class="hint">${capp > 0 ? (m.exp / capp * 100).toFixed(2) + '%' : ''}</span>
+      <span class="g en">${gain}</span>
+      <button class="btn tiny" data-delmark="${m.id}">删</button>
+    </div>`
+  }).reverse().join('')
+  return `<section class="panel"><div class="panel-t">每一笔<span class="sub">${ms.length} 笔</span></div><div class="logs">${rows}</div></section>`
 }
 
 function tablePanel(c, k) {
@@ -590,8 +963,9 @@ function welcomeView() {
       <div class="field"><label>目标等级</label><select id="n-tlv">${opts.join('')}</select></div>
       <div class="field"><label>目标日期</label><input type="date" id="n-tdate" value="${addDays(today(), 60)}"></div>
     </div>
+    <label class="chk"><input type="checkbox" id="n-nogoal"> 先不订目标，只记录（以后随时能订）</label>
     <div class="row" style="margin-top:12px">
-      <button class="btn primary" id="n-create">创建计划</button>
+      <button class="btn primary" id="n-create">创建角色</button>
       ${S.chars.length ? '<button class="btn ghost" id="n-cancel">取消</button>' : ''}
     </div>
     <div class="hint" style="margin-top:10px">经验表用的是国服怀旧服（CMS079）的数值。每个角色一套独立计划，数据自动同步到云端，换电脑打开同一个网址就能看到。</div>
@@ -678,6 +1052,7 @@ document.addEventListener('click', e => {
     if (!b) return
     if (!confirm(`用 ${b.at.slice(0, 16).replace('T', ' ')} 那份备份（${b.chars} 个角色）覆盖当前数据？`)) return
     S = Object.assign({ chars: [], activeId: null }, JSON.parse(b.body))
+    migrateAll()
     S.updated_at = new Date().toISOString()
     localStorage.setItem(LS, JSON.stringify(S))
     saveToCloud(S)
@@ -686,18 +1061,28 @@ document.addEventListener('click', e => {
   }
 
   if (t.id === 'n-create') return createChar()
-  if (t.id === 'btn-log') return logToday()
+  if (t.id === 'btn-log') return addMark()
+  if (t.id === 'btn-goal-new') return startGoal()
+  if (t.id === 'btn-goal-end') return endGoal()
   if (t.id === 'btn-target') return updateTarget()
   if (t.id === 'btn-name') return updateName()
   if (t.id === 'btn-start') return resetStart()
   if (t.id === 'btn-del') return delChar()
 
-  const dl = t.closest('[data-dellog]')
-  if (dl) {
+  const dm = t.closest('[data-delmark]')
+  if (dm) {
     const c = activeChar()
-    delete c.logs[dl.dataset.dellog]
+    const m = (c.marks || []).find(x => x.id === dm.dataset.delmark)
+    if (!m) return
+    if (!confirm(`删掉 ${m.d}${m.at ? ' ' + m.at.slice(11) : ''} 那一笔（Lv.${m.level}）？`)) return
+    c.marks = c.marks.filter(x => x.id !== m.id)
+    syncLogs(c)
     save(); render(); return
   }
+
+  // 热力图点格子：看那天的详情，再点一次取消
+  const hd = t.closest('[data-hday]')
+  if (hd) { UI.hday = UI.hday === hd.dataset.hday ? null : hd.dataset.hday; render(); return }
 })
 
 document.addEventListener('change', e => {
@@ -747,27 +1132,59 @@ function createChar() {
   tlv = clamp(tlv, lv + 1, 200)
   let tdate = document.getElementById('n-tdate').value || addDays(today(), 60)
   if (diffDays(today(), tdate) < 1) tdate = addDays(today(), 1)
+  const noGoal = document.getElementById('n-nogoal').checked
   const c = {
     id: 'c' + Date.now().toString(36),
     name, job, sprite: newSprite,
     startDate: today(), startLevel: lv, startExp: exp,
     targetLevel: tlv, targetDate: tdate,
-    logs: { [today()]: { level: lv, exp } },
+    goalOn: !noGoal, goals: [], marks: [],
     timer: null, sessions: [],
     createdAt: new Date().toISOString()
   }
+  pushMark(c, lv, exp)
   S.chars.push(c)
   S.activeId = c.id
   creating = false
   save(); render()
 }
 
-function logToday() {
+function addMark() {
   const c = activeChar()
   const lv = clamp(parseInt(document.getElementById('in-lv').value, 10) || 1, 1, 200)
   const exp = readExpInput(lv, document.getElementById('in-exp').value)
-  c.logs = c.logs || {}
-  c.logs[today()] = { level: lv, exp }
+  const done = pushMark(c, lv, exp)
+  save(); render()
+  if (done) celebrate(c)
+}
+
+// 目标达成那一下给个反馈 —— 页面已经切成平日记录了，顶上有归档的那条
+function celebrate(c) {
+  const g = c.goals[c.goals.length - 1]
+  setTimeout(() => alert(`🎉 ${c.name} 达成目标 Lv.${g.targetLevel}！\n\n` +
+    `${g.startDate} → ${g.endDate}，用了 ${Math.max(1, diffDays(g.startDate, g.endDate))} 天。\n` +
+    `已经归档进「记录」里的目标历史，现在回到平日记录。`), 50)
+}
+
+function startGoal() {
+  const c = activeChar()
+  const cur = currentOf(c)
+  if (cur.level >= 200) return
+  const tlv = clamp(parseInt(document.getElementById('g-tlv').value, 10) || 200, cur.level + 1, 200)
+  let tdate = document.getElementById('g-tdate').value || addDays(today(), 30)
+  if (diffDays(today(), tdate) < 1) tdate = addDays(today(), 1)
+  // 新目标的起点就是现在的位置
+  c.startDate = today(); c.startLevel = cur.level; c.startExp = cur.exp
+  c.targetLevel = tlv; c.targetDate = tdate
+  c.goalOn = true
+  save(); render()
+}
+
+function endGoal() {
+  const c = activeChar()
+  if (!c.goalOn) return
+  if (!confirm(`结束「Lv.${c.startLevel} → ${c.targetLevel}」这个目标？\n\n会归档进「记录」里的目标历史，之后变成平日记录，随时能订新目标。记录都保留。`)) return
+  archiveGoal(c, '手动结束')
   save(); render()
 }
 
@@ -1185,12 +1602,12 @@ function tmStop() {
     startedAt: pts[0].at, endedAt: new Date().toISOString(),
     ms, gain, rate: rateOf(gain, ms), points: pts, note
   })
-  // 顺手把最后一个打点写成今天的打卡
+  // 顺手把最后一个打点记成一笔
   const last = pts[pts.length - 1]
-  c.logs = c.logs || {}
-  c.logs[today()] = { level: last.level, exp: last.exp }
   c.timer = null
+  const done = pushMark(c, last.level, last.exp)
   save(); render()
+  if (done) celebrate(c)
 }
 
 /* ── 秒针：只改时钟文字，不整页重绘，免得输入框失焦 ── */
@@ -1312,6 +1729,7 @@ async function boot() {
     if (cloudNewer) {
       backupLocal('被云端覆盖前')
       S = Object.assign({ chars: [], activeId: null }, cloud)
+      migrateAll()
       localStorage.setItem(LS, JSON.stringify(S))
       render()
     } else if (S.chars.length) {
