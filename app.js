@@ -755,13 +755,18 @@ function heatSVG(days, sel) {
   const keys = Object.keys(days).sort()
   const endMon = alignMon(today())
   const MAXW = 53
-  // 至少画 20 周，记录少的时候也像个日历，不是孤零零几格
+  // 格子按真实像素画，不拉伸 —— 以前 width:100% 把 20 周撑满整行，格子被放大两倍多。
+  // 周数改成「这一行放得下几周就画几周」，记录跨度更长就横滚（默认停在最右）
+  const C = 18, ST = 22, GX = 30, GY = 26
+  // main 左右内边距 32 + 面板内边距 28 + 白框内边距 16 + 余量 4。还没排版（宽度量不到）时按 800 算
+  const aw = app() ? app().clientWidth : 0
+  const avail = (aw > 200 ? aw : 800) - 32 - 28 - 16 - 4
+  const fit = clamp(Math.floor((avail - GX - 4) / ST), 10, MAXW)
   let startMon = alignMon(keys[0] || today())
   let weeks = Math.floor(diffDays(startMon, endMon) / 7) + 1
-  if (weeks < 20) { startMon = addDays(endMon, -19 * 7); weeks = 20 }
+  if (weeks < fit) { startMon = addDays(endMon, -(fit - 1) * 7); weeks = fit }
   if (weeks > MAXW) { startMon = addDays(endMon, -(MAXW - 1) * 7); weeks = MAXW }
 
-  const C = 14, ST = 17, GX = 30, GY = 24
   const W = GX + weeks * ST + 4, H = GY + 7 * ST + 4
   const gains = keys.filter(d => d >= startMon).map(d => days[d].gain).filter(g => g > 0)
   // 色阶按自己的最大值走，但至少 0.3 级才算满格 —— 免得只记过一点点也全是深绿
@@ -773,7 +778,7 @@ function heatSVG(days, sel) {
     const mon = addDays(startMon, w * 7)
     const m = parseD(mon).getMonth()
     if (m !== lastM) {
-      months += `<text class="hm-m" x="${GX + w * ST}" y="15">${m + 1}月</text>`
+      months += `<text class="hm-m" x="${GX + w * ST}" y="16">${m + 1}月</text>`
       lastM = m
     }
     for (let r = 0; r < 7; r++) {
@@ -786,12 +791,14 @@ function heatSVG(days, sel) {
         : `${d} 周${WEEK[parseD(d).getDay()]} · 没有记录`
       const X = GX + w * ST, Y = GY + r * ST
       cells += `<rect class="hm ${lv}${d === today() ? ' today' : ''}${d === sel ? ' sel' : ''}" data-hday="${d}" x="${X}" y="${Y}" width="${C}" height="${C}"><title>${tip}</title></rect>`
-      if (x && x.sess) cells += `<rect class="hm-s" x="${X + C - 5}" y="${Y + C - 5}" width="4" height="4" pointer-events="none"/>`
+      if (x && x.sess) cells += `<rect class="hm-s" x="${X + C - 7}" y="${Y + C - 7}" width="5" height="5" pointer-events="none"/>`
     }
   }
-  const wl = [0, 2, 4].map(r => `<text class="hm-w" x="${GX - 8}" y="${GY + r * ST + 12}">${WEEK[(r + 1) % 7]}</text>`).join('')
-  return `<div class="hmwrap"><svg viewBox="0 0 ${W} ${H}" class="hmsvg" style="min-width:${W}px" xmlns="http://www.w3.org/2000/svg">${months}${wl}${cells}</svg></div>
-  <div class="hmlegend"><span>少</span><i class="g1"></i><i class="g2"></i><i class="g3"></i><i class="g4"></i><span>多</span>
+  const wl = [0, 2, 4].map(r => `<text class="hm-w" x="${GX - 8}" y="${GY + r * ST + 14}">${WEEK[(r + 1) % 7]}</text>`).join('')
+  return `<div class="hmwrap"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" class="hmsvg" xmlns="http://www.w3.org/2000/svg">${months}${wl}${cells}</svg></div>`
+}
+function heatLegend() {
+  return `<div class="hmlegend"><span>少</span><i class="g1"></i><i class="g2"></i><i class="g3"></i><i class="g4"></i><span>多</span>
     <i class="g0"></i><span>记了没升</span><i class="none"></i><span>没记录</span><i class="sdot"></i><span>有计时</span></div>`
 }
 
@@ -825,9 +832,9 @@ function heatPanel(c) {
 
   const span = diffDays(A.keys[0], today()) + 1
   return `<section class="panel">
-    <div class="panel-t">升级热力图<span class="sub">格子越深，那天升得越多</span></div>
+    <div class="panel-t">升级热力图</div>
     ${heatSVG(days, sel)}
-    ${detail}
+    <div class="hmfoot">${detail}${heatLegend()}</div>
 
     <div class="stats four">
       <div class="stat hero"><div class="k">最近 7 天升了</div><div class="v en">${sumLv(w7).replace(/ (一级|级)$/, '')}<small> ${w7 >= 1 ? '级' : '一级'}</small></div><div class="n">30 天共 ${sumLv(w30)}</div></div>
@@ -1647,6 +1654,14 @@ document.addEventListener('focusin', e => {
     const n = el.value.length
     try { el.setSelectionRange(n, n) } catch (_) { /* 少数输入法下会抛，忽略 */ }
   })
+})
+
+/* ── 窗口宽度变了：热力图要重算放得下几周（只在记录 tab，那里没有输入框，重绘不会丢焦点） ── */
+let resizeTimer = null
+window.addEventListener('resize', () => {
+  if (UI.tab !== 'log' || !S.chars.length) return
+  clearTimeout(resizeTimer)
+  resizeTimer = setTimeout(render, 200)
 })
 
 /* ── 空格键：暂停 / 继续 ── */

@@ -366,8 +366,9 @@ td.neg{color:var(--red)}
 
 /* ── 升级热力图 ──
    格子 = 一天，深浅 = 那天升了多少级。窄屏不缩小，横向滚动（同 .cchart 的思路） */
-.hmwrap{margin-top:4px;background:#fff;padding:10px 8px 6px;overflow-x:auto;box-shadow:0 0 0 3px var(--ink)}
-.hmsvg{display:block;height:auto;width:100%;font-family:'Zpix',monospace}
+.hmwrap{margin-top:4px;background:#fff;padding:8px 8px 4px;overflow-x:auto;box-shadow:0 0 0 3px var(--ink)}
+/* 按真实像素画，不拉伸；放不下就横滚 */
+.hmsvg{display:block;max-width:none;font-family:'Zpix',monospace}
 .hmsvg .hm{shape-rendering:crispEdges;cursor:pointer;stroke:rgba(58,42,30,.18);stroke-width:1}
 .hmsvg .hm.none{fill:#F6EFDF}
 .hmsvg .hm.gs{fill:#F6EFDF}
@@ -379,9 +380,12 @@ td.neg{color:var(--red)}
 .hmsvg .hm.today{stroke:var(--orange);stroke-width:2}
 .hmsvg .hm.sel{stroke:var(--ink);stroke-width:3}
 .hmsvg .hm-s{fill:var(--gold);stroke:var(--ink);stroke-width:1;shape-rendering:crispEdges}
-.hmsvg .hm-m{fill:var(--wood-d);font-size:13px}
-.hmsvg .hm-w{fill:var(--muted);font-size:12px;text-anchor:end}
-.hmlegend{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-top:8px;font-size:14px;color:var(--muted)}
+.hmsvg .hm-m{fill:var(--wood-d);font-size:14px}
+.hmsvg .hm-w{fill:var(--muted);font-size:13px;text-anchor:end}
+/* 热力图下面一行：左边当天详情，右边图例 */
+.hmfoot{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 16px;margin-top:8px}
+.hmfoot .say{margin-top:0}
+.hmlegend{display:flex;align-items:center;flex-wrap:wrap;gap:5px;font-size:14px;color:var(--muted);margin-left:auto}
 .hmlegend i{width:13px;height:13px;display:inline-block;box-shadow:0 0 0 1px rgba(58,42,30,.25)}
 .hmlegend span+i.g0{margin-left:12px}
 .hmlegend i.g0{background:#E3D6BC}.hmlegend i.g1{background:#CBEA9C}.hmlegend i.g2{background:#8FD05C}
