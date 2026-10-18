@@ -1102,8 +1102,10 @@ document.addEventListener('change', e => {
     return
   }
   if (e.target.id === 'mp-cont') {
-    // 换大陆 → 落到这块大陆的第一个地区
-    const g = MAPS.find(g => g.cont === e.target.value)
+    // 换大陆 → 回到在这块大陆上次选的地区（来回切通天塔和金银岛不用每次重找），没有就第一个
+    const cont = e.target.value
+    const last = lastRegionOf()[cont]
+    const g = MAPS.find(g => g.cont === cont && g.region === last) || MAPS.find(g => g.cont === cont)
     if (g) { UI.region = g.region; UI.map = '' }
     localStorage.setItem('mls_region', UI.region); localStorage.setItem('mls_map', '')
     render()
@@ -1111,6 +1113,11 @@ document.addEventListener('change', e => {
   if (e.target.id === 'mp-region') {
     UI.region = e.target.value; UI.map = ''
     localStorage.setItem('mls_region', UI.region); localStorage.setItem('mls_map', '')
+    const g = MAPS.find(g => g.region === UI.region)
+    if (g) {
+      const o = lastRegionOf(); o[g.cont] = g.region
+      try { localStorage.setItem('mls_cont_region', JSON.stringify(o)) } catch (_) { /* 存不了就算了 */ }
+    }
     render()
   }
   if (e.target.id === 'mp-map') {
@@ -1249,6 +1256,10 @@ function regionOf(name) {
 }
 // 三级：大陆 → 地区 → 地图。大陆不单独存，由当前地区反推，免得两者对不上
 const CONTS = [...new Set(MAPS.map(g => g.cont))]
+// 每块大陆上次选的地区 { 大陆: 地区 }，纯本机的使用习惯，不上云
+function lastRegionOf() {
+  try { return JSON.parse(localStorage.getItem('mls_cont_region') || '{}') || {} } catch (_) { return {} }
+}
 function mapPicker() {
   const reg = MAPS.find(g => g.region === UI.region) || MAPS[0]
   const contOpts = CONTS.map(c => `<option value="${c}" ${c === reg.cont ? 'selected' : ''}>${c}</option>`).join('')
