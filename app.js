@@ -1101,6 +1101,13 @@ document.addEventListener('change', e => {
     else if (c) rn.value = c.name
     return
   }
+  if (e.target.id === 'mp-cont') {
+    // 换大陆 → 落到这块大陆的第一个地区
+    const g = MAPS.find(g => g.cont === e.target.value)
+    if (g) { UI.region = g.region; UI.map = '' }
+    localStorage.setItem('mls_region', UI.region); localStorage.setItem('mls_map', '')
+    render()
+  }
   if (e.target.id === 'mp-region') {
     UI.region = e.target.value; UI.map = ''
     localStorage.setItem('mls_region', UI.region); localStorage.setItem('mls_map', '')
@@ -1240,15 +1247,21 @@ function regionOf(name) {
   const g = MAPS.find(g => g.maps.some(m => m.n === name))
   return g ? g.region : ''
 }
+// 三级：大陆 → 地区 → 地图。大陆不单独存，由当前地区反推，免得两者对不上
+const CONTS = [...new Set(MAPS.map(g => g.cont))]
 function mapPicker() {
   const reg = MAPS.find(g => g.region === UI.region) || MAPS[0]
-  const regOpts = MAPS.map(g => `<option value="${g.region}" ${g.region === reg.region ? 'selected' : ''}>${g.region}</option>`).join('')
+  const contOpts = CONTS.map(c => `<option value="${c}" ${c === reg.cont ? 'selected' : ''}>${c}</option>`).join('')
+  const regOpts = MAPS.filter(g => g.cont === reg.cont)
+    .map(g => `<option value="${g.region}" ${g.region === reg.region ? 'selected' : ''}>${g.region}</option>`).join('')
   const mapOpts = ['<option value="">（不填）</option>']
     .concat(reg.maps.map(m => `<option value="${m.n}" ${m.n === UI.map ? 'selected' : ''}>${esc(m.n)}</option>`)).join('')
   // 经验卡/活动的倍率。开卡和裸练的数据不能混在一起算，所以它和地图一样是段的属性
   const multOpts = MULTS.map(m =>
     `<option value="${m}" ${m === UI.mult ? 'selected' : ''}>${multText(m)}</option>`).join('')
-  return `<div class="field" style="flex:1 1 130px"><label>地区</label>
+  return `<div class="field" style="flex:1 1 110px"><label>大陆</label>
+      <select id="mp-cont">${contOpts}</select></div>
+    <div class="field" style="flex:1 1 120px"><label>地区</label>
       <select id="mp-region">${regOpts}</select></div>
     <div class="field" style="flex:1 1 160px"><label>现在在哪练</label>
       <select id="mp-map">${mapOpts}</select></div>
