@@ -1658,12 +1658,17 @@ function syncTick() {
 /* ── 百分比框：直接敲数字，小数点自动补上 ──
    敲 1 1 5 6 依次显示 0.01 → 0.11 → 1.15 → 11.56。
    退格也按显示的字符走，和收银机/ATM 的输入手感一致。
-   这么做主要是为了少出事故：以前要手打小数点，很容易留着上一次的值就按了「记一笔」。 */
+   这么做主要是为了少出事故：以前要手打小数点，很容易留着上一次的值就按了「记一笔」。
+   超出 4 位时像滚动一样只留最后 4 位：框里是 45.23，不清空直接敲 4 6 1 2，
+   依次是 52.34 → 23.46 → 34.61 → 46.12。以前是截前 5 位再封顶，会被顶成 100.00 卡住，
+   一不留神就记进一笔「打满一级」的假数据。 */
 document.addEventListener('input', e => {
   const el = e.target
   if (!el.matches || !el.matches('input.pctin')) return
-  const digits = el.value.replace(/\D/g, '').replace(/^0+(?=\d{3})/, '').slice(0, 5)  // 最大 100.00
-  const v = Math.min(10000, Number(digits || 0))
+  let digits = el.value.replace(/\D/g, '').replace(/^0+/, '')
+  // 100.00 本身是 5 位，单独放行；其余超过 4 位的只留最后 4 位
+  if (digits.length > 4 && digits !== '10000') digits = digits.slice(-4)
+  const v = Number(digits || 0)
   el.value = (v / 100).toFixed(2)
   const n = el.value.length
   try { el.setSelectionRange(n, n) } catch (_) { /* 忽略 */ }
