@@ -223,6 +223,16 @@
 - 浏览器不让没点过的页面出声：刷新后提示「点一下」，`pointerdown` 时打开音频并重排
 - 状态存 localStorage `mls_buff` = { name, cd(秒), at(epoch|null), mute }，**纯本机不上云**
 - 画面 250ms 刷一次，只改字/条/class，不整页重绘（免得输入框失焦）
+- **小窗**（「小窗」按钮，`buffOpenMini` → `buffSetupMini(w)`）：看视频时也能看到倒计时
+  - Chrome / Edge 用 `documentPictureInPicture.requestWindow`：浮在所有窗口最上面；
+    其它浏览器（Safari / Firefox 不支持）退回 `window.open` 小弹窗；被拦截就提示去允许弹窗
+  - **两种都是主页面的代码在画小窗内容**，声音只从主页面一个 AudioContext 出来，不会两边各响。
+    代价：主页面得开着（最小化/切走可以），关了主页面小窗就失效
+  - 小窗用**它自己的** `w.setInterval` 刷新（小窗可见，不会被放慢）；`mls_buff` 变了就整块重画，
+    否则只改字和条；同名弹窗重开会拿到同一个窗口，`w.__mlsBound` 防止事件挂两遍（静音连按两下 = 没按）
+  - 开小窗前先在主页面点击里 `buffAudio()`：小弹窗里的点击替不了主页面解锁声音
+  - 小窗 300×170 会命中手机断点，`.buff.mini .buff-bar{order:0}` 把条拉回时间下面
+  - Claude 内置浏览器开不了画中画和弹窗（"no window" / 被拦），测试时用 iframe 当替身调 `buffSetupMini`
 
 ## 计时器数据结构
 - `c.timer` = { state:'running'|'paused', startedAt, accumMs, points:[{ms, level, exp, map, mult, at}] }

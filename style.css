@@ -454,3 +454,13 @@ td.neg{color:var(--red)}
   .buff-t{font-size:20px;min-width:0}
   .buff-ago{margin-left:0}
 }
+
+/* ── 增益小窗（画中画 / 小弹窗）：只有倒计时、放了、停、静音 ── */
+body.minibody{background:var(--paper);padding:8px;min-height:0;font-size:18px;line-height:1.5}
+.buff.mini{flex-direction:column;align-items:stretch;gap:8px;margin:0;padding:8px 10px;min-height:calc(100vh - 16px)}
+.mini-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.buff.mini .buff-t{font-size:30px;min-width:0}
+.buff.mini .buff-bar{flex:0 0 auto;height:14px;order:0}   /* 小窗很窄会命中手机那条 order:5，这里拉回时间下面 */
+.mini-btns{display:flex;gap:6px}
+.buff.mini .mini-btns .btn{flex:1 1 0;padding-top:6px;padding-bottom:6px;font-size:17px;text-align:center}
+.mini-btns .btn:disabled{opacity:.4;cursor:default}

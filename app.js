@@ -1043,6 +1043,8 @@ document.addEventListener('click', e => {
   if (t.id === 'bf-stop') return buffStop()
   if (t.id === 'bf-snd') return buffMute()
   if (t.id === 'bf-set') { UI.buffSet = !UI.buffSet; render(); return }
+  // 先借这次点击把音频打开：小窗里的点击不一定能替主页面解锁声音
+  if (t.id === 'bf-mini') { buffAudio().then(buffSchedule); return buffOpenMini() }
   if (t.id === 'bf-save') return buffSave()
   if (t.id === 'tm-start') return tmStart()
   if (t.id === 'tm-mark') return tmMark()
@@ -1788,6 +1790,7 @@ function buffHTML() {
       <button class="btn tiny ${b.at ? '' : 'primary'}" id="bf-cast">放了</button>
       ${b.at ? '<button class="btn tiny" id="bf-stop">停</button>' : ''}
       <button class="btn tiny ghost" id="bf-snd" title="${b.mute ? '现在静音，点一下开声音' : '点一下静音'}">${b.mute ? '🔇' : '🔊'}</button>
+      <button class="btn tiny ghost" id="bf-mini" title="开一个小窗口，看视频的时候也能看到倒计时">小窗</button>
       <button class="btn tiny ghost" id="bf-set">${set ? '收起' : '设置'}</button>
     </div>
     ${needTap ? '<div class="hint buff-tap">刷新过页面，浏览器要点一下才肯出声 —— 点页面任意地方就行</div>' : ''}`
@@ -1802,19 +1805,89 @@ function buffHTML() {
   return row + form
 }
 // 每 250ms 只改倒数的字、条和颜色，不整页重绘（免得练级的输入框失焦）
-function buffPaint() {
-  const el = document.getElementById('buff')
+// doc 可以是主页面，也可以是小窗（两边元素 id 一样）
+function buffPaintIn(doc) {
+  const el = doc.getElementById('buff')
   if (!el) return
   const b = buffState()
-  if (!b.at) return
-  const n = buffNow(b), lv = buffLevel(b)
+  const n = b.at ? buffNow(b) : null, lv = buffLevel(b)
   if (!el.classList.contains(lv)) { el.classList.remove('calm', 'warn', 'hot', 'crit', 'now', 'off'); el.classList.add(lv) }
-  const t = document.getElementById('buff-t'), i = document.getElementById('buff-i')
-  if (t) t.textContent = lv === 'now' ? '该放了' : fmtMS(n.left)
-  if (i) i.style.width = (n.left / n.cd * 100).toFixed(1) + '%'
+  const t = doc.getElementById('buff-t'), i = doc.getElementById('buff-i')
+  if (t) t.textContent = !n ? '—' : lv === 'now' ? '该放了' : fmtMS(n.left)
+  if (i) i.style.width = (n ? n.left / n.cd * 100 : 0).toFixed(1) + '%'
+}
+function buffPaint() {
+  buffPaintIn(document)
   buffSchedule()   // 顺手把 10 分钟之后的声音续上
 }
 setInterval(buffPaint, 250)
+
+/* ── 小窗：看视频时也能看到倒计时 ──
+   Chrome / Edge 用「画中画」窗口（documentPictureInPicture）：浮在所有窗口最上面，视频播放器也盖得住。
+   其它浏览器退回 window.open 一个小弹窗，自己摆到视频旁边。
+   两种都是**主页面的代码在画小窗的内容** —— 声音只从主页面这一个 AudioContext 出来，
+   不会两边各响一遍。代价是主页面得开着（最小化、切走都行），关了小窗就跟着失效。
+   小窗自己的定时器负责刷新：小窗看得见，不会被浏览器放慢；主页面在后台慢了也不影响它。 */
+function buffMiniHTML() {
+  const b = buffState()
+  return `<div class="buff mini ${buffLevel(b)}" id="buff">
+    <div class="mini-top">
+      <span class="buff-n" id="buff-n">${esc(b.name)}<small class="en">${fmtMS(b.cd * 1000)}</small></span>
+      <span class="buff-t en" id="buff-t">—</span>
+    </div>
+    <span class="buff-bar"><i id="buff-i"></i></span>
+    <div class="mini-btns">
+      <button class="btn tiny ${b.at ? '' : 'primary'}" id="bf-cast">放了</button>
+      <button class="btn tiny" id="bf-stop" ${b.at ? '' : 'disabled'}>停</button>
+      <button class="btn tiny ghost" id="bf-snd">${b.mute ? '🔇' : '🔊'}</button>
+    </div>
+  </div>`
+}
+async function buffOpenMini() {
+  let w = null
+  if (window.documentPictureInPicture) {
+    try { w = await window.documentPictureInPicture.requestWindow({ width: 300, height: 170 }) } catch (e) { console.warn('画中画打不开，改用小弹窗', e) }
+  }
+  if (!w) w = window.open('', 'mls-buff', 'popup,width=320,height=200')
+  if (!w) { alert('浏览器拦住了弹出窗口。地址栏右边一般会有个「已拦截」的图标，点它允许这个网站弹窗就行。'); return }
+  buffSetupMini(w)
+}
+// 往一个窗口里画小窗。和「怎么拿到窗口」分开，画中画、小弹窗、测试用的 iframe 都走这里
+function buffSetupMini(w) {
+  const d = w.document
+  d.title = '增益倒计时'
+  d.head.innerHTML = '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+  // 用主页面同一份样式（换成绝对地址，弹窗是 about:blank，相对路径找不到）
+  document.querySelectorAll('link[rel=stylesheet]').forEach(l => {
+    const c = d.createElement('link'); c.rel = 'stylesheet'; c.href = new URL(l.getAttribute('href'), location.href).href
+    d.head.appendChild(c)
+  })
+  d.body.className = 'minibody'
+  const draw = () => { d.body.innerHTML = buffMiniHTML(); buffPaintIn(d) }
+  draw()
+  w.focus()
+  // 同名小弹窗再点一次会拿到同一个窗口：事件和定时器只挂一次，不然静音会被连按两下等于没按
+  if (w.__mlsBound) return
+  w.__mlsBound = true
+  // 按钮：动作和主页面共用；放了 / 停 / 静音会改按钮本身，所以整块重画（250ms 的刷新只改字和条）
+  d.addEventListener('click', e => {
+    const id = e.target && e.target.id
+    if (id === 'bf-cast') buffCast(0)
+    else if (id === 'bf-stop') buffStop()
+    else if (id === 'bf-snd') buffMute()
+    else return
+    draw()
+  })
+  d.addEventListener('pointerdown', () => { buffAudio().then(buffSchedule) })
+  let last = ''
+  const timer = w.setInterval(() => {
+    // 主页面那边改了名字 / CD / 静音，小窗跟着整块重画
+    const sig = localStorage.getItem(BUFF_KEY) || ''
+    if (sig !== last) { last = sig; draw() } else buffPaintIn(d)
+    buffSchedule()
+  }, 250)
+  w.addEventListener('pagehide', () => w.clearInterval(timer))
+}
 // 刷新后音频是关着的；用户点页面任意地方时把它打开、重新排上声音
 document.addEventListener('pointerdown', () => {
   const b = buffState()
