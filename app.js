@@ -1038,6 +1038,12 @@ document.addEventListener('click', e => {
   const unit = t.closest('[data-unit]')
   if (unit) { UI.expUnit = unit.dataset.unit; localStorage.setItem('mls_unit', UI.expUnit); render(); return }
 
+  if (t.id === 'bf-cast') return buffCast(0)
+  if (t.id === 'bf-cast-ago') return buffCast(Number(document.getElementById('bf-ago').value) || 0)
+  if (t.id === 'bf-stop') return buffStop()
+  if (t.id === 'bf-snd') return buffMute()
+  if (t.id === 'bf-set') { UI.buffSet = !UI.buffSet; render(); return }
+  if (t.id === 'bf-save') return buffSave()
   if (t.id === 'tm-start') return tmStart()
   if (t.id === 'tm-mark') return tmMark()
   if (t.id === 'tm-undo') return tmUndo()
@@ -1474,6 +1480,7 @@ function timerPanel(c) {
       <span id="tm-time" class="en">${fmtDur(ms)}</span>
       <em>${state === 'running' ? '计时中' : state === 'paused' ? '暂停中 · 空格继续' : '没在计时'}</em>
     </div>
+    ${buffHTML()}
     <div class="row" style="margin-top:12px">
       <div class="field" style="flex:0 0 110px"><label>当前等级</label>
         <input type="text" inputmode="numeric" class="numin" id="tm-lv" value="${seed.level}"></div>
@@ -1640,6 +1647,183 @@ function tmStop() {
   save(); render()
   if (done) celebrate(c)
 }
+
+/* ───────────────── 增益技能倒计时 ─────────────────
+   一个技能、一个 CD，按「放了」从现在开始倒数，到 0 自动进入下一轮。
+   剩 40 / 30 / 20 / 10 秒各「嘀」一声，越近越急（金 → 橙 → 红闪），到 0 换一个提示音。
+
+   声音**不靠 setInterval 去响**：浏览器窗口被游戏挡住或切到后台时，定时器会被放慢，
+   严重时一分钟才跑一次，「剩 10 秒」会晚到甚至没了。所以「放了」那一刻就把接下来
+   10 分钟的提示音全排进 Web Audio 的时间轴，由音频时钟准时播，和 JS 定时器无关。
+   画面上的倒数照样用定时器刷 —— 看得见的时候它不会被放慢。
+
+   状态存本机 localStorage `mls_buff`，不上云：这是此刻在游戏里的实时状态，换台机器没有意义。 */
+const BUFF_KEY = 'mls_buff'
+const BUFF_ALERTS = [40, 30, 20, 10]
+const BUFF_AHEAD = 10 * 60000       // 提前排多远的声音。要比「后台定时器最慢一分钟一跑」长得多
+function buffState() {
+  let b = null
+  try { b = JSON.parse(localStorage.getItem(BUFF_KEY) || 'null') } catch (_) { /* 读不到就当没设 */ }
+  return Object.assign({ name: '增益', cd: 120, at: null, mute: false }, b || {})
+}
+function buffSaveState(b) {
+  try { localStorage.setItem(BUFF_KEY, JSON.stringify(b)) } catch (_) { /* 存不了就只在这次页面里有效 */ }
+}
+
+// 这一轮还剩多少毫秒；第几轮（0 = 按「放了」之后的第一轮）
+function buffNow(b, now = Date.now()) {
+  const cd = b.cd * 1000
+  const el = Math.max(0, now - b.at)
+  return { left: cd - el % cd, round: Math.floor(el / cd), inRound: el % cd, cd }
+}
+
+/* ── 声音 ── */
+const Buff = { ctx: null, nodes: [], until: 0 }
+function buffAudio() {
+  const AC = window.AudioContext || window.webkitAudioContext
+  if (!AC) return Promise.resolve(null)
+  if (!Buff.ctx) Buff.ctx = new AC()
+  return Buff.ctx.state === 'running' ? Promise.resolve(Buff.ctx) : Buff.ctx.resume().then(() => Buff.ctx, () => null)
+}
+// 一声方波「嘀」—— 像素风就配 8-bit 的声音。音量压得很低，只是提醒
+function buffTone(ctx, t, freq, dur, vol = 0.05) {
+  const o = ctx.createOscillator(), g = ctx.createGain()
+  o.type = 'square'; o.frequency.value = freq
+  g.gain.setValueAtTime(0, t)
+  g.gain.linearRampToValueAtTime(vol, t + 0.005)
+  g.gain.setValueAtTime(vol, t + dur - 0.015)
+  g.gain.linearRampToValueAtTime(0, t + dur)
+  o.connect(g); g.connect(ctx.destination)
+  o.start(t); o.stop(t + dur + 0.01)
+  Buff.nodes.push({ g, end: t + dur })
+}
+function buffSound(ctx, t, sec) {
+  if (sec === 0) {                       // 到 0：三连音往上走，和前面的「嘀」一听就分得开
+    buffTone(ctx, t, 784, 0.09); buffTone(ctx, t + 0.11, 988, 0.09); buffTone(ctx, t + 0.22, 1319, 0.16)
+  } else if (sec === 10) {               // 最后 10 秒：两声，高一点
+    buffTone(ctx, t, 988, 0.08); buffTone(ctx, t + 0.13, 988, 0.08)
+  } else {                               // 40 / 30 / 20：一声
+    buffTone(ctx, t, 659, 0.09)
+  }
+}
+// 取消已经排好、还没播的声音：断开音量节点就静音了（不再调 stop()，有的浏览器重复 stop 会抛错）
+function buffClearSounds() {
+  for (const n of Buff.nodes) { try { n.g.disconnect() } catch (_) { /* 忽略 */ } }
+  Buff.nodes = []; Buff.until = 0
+}
+// 把 [已排到的时刻, 现在 + 10 分钟] 之间的提示音排进音频时间轴。重复调用只补新的，不会重复排
+function buffSchedule() {
+  const b = buffState(), ctx = Buff.ctx
+  if (!b.at || b.mute || !ctx || ctx.state !== 'running') return
+  const now = Date.now(), horizon = now + BUFF_AHEAD
+  const from = Math.max(now, Buff.until)
+  if (horizon - from < 60000) return     // 剩下的还够一分钟以上，先不补
+  const cd = b.cd * 1000
+  Buff.nodes = Buff.nodes.filter(n => n.end > ctx.currentTime)   // 播完的丢掉，列表不会越攒越长
+  for (let k = Math.max(0, Math.floor((from - b.at) / cd)); ; k++) {
+    const end = b.at + (k + 1) * cd     // 第 k 轮结束 = 该放技能的时刻
+    if (end - BUFF_ALERTS[0] * 1000 > horizon) break
+    for (const sec of [...BUFF_ALERTS, 0]) {
+      if (sec * 1000 >= cd) continue     // CD 本身不到 40 秒，就没有「剩 40 秒」
+      const at = end - sec * 1000
+      if (at <= from || at > horizon) continue
+      buffSound(ctx, ctx.currentTime + (at - now) / 1000, sec)
+    }
+  }
+  Buff.until = horizon
+}
+
+/* ── 动作 ── */
+function buffCast(agoSec) {
+  const b = buffState()
+  b.at = Date.now() - clamp(Math.round(agoSec), 0, b.cd - 1) * 1000
+  buffSaveState(b)
+  buffClearSounds()
+  // 「放了」是一次点击，借这次点击把音频打开（浏览器不允许没点过就出声）
+  buffAudio().then(() => { buffSchedule(); buffPaint() })
+  render()
+}
+function buffStop() {
+  const b = buffState(); b.at = null; buffSaveState(b)
+  buffClearSounds(); render()
+}
+function buffMute() {
+  const b = buffState(); b.mute = !b.mute; buffSaveState(b)
+  buffClearSounds()
+  if (!b.mute) buffAudio().then(buffSchedule)
+  render()
+}
+function buffSave() {
+  const b = buffState()
+  b.name = (document.getElementById('bf-name').value || '').trim() || '增益'
+  const m = clamp(parseInt(document.getElementById('bf-m').value, 10) || 0, 0, 59)
+  const sec = clamp(parseInt(document.getElementById('bf-s').value, 10) || 0, 0, 59)
+  b.cd = Math.max(5, m * 60 + sec)
+  buffSaveState(b)
+  buffClearSounds(); buffAudio().then(buffSchedule)
+  UI.buffSet = false
+  render()
+}
+
+/* ── 画面 ── */
+const fmtMS = ms => { const s = Math.ceil(ms / 1000); return Math.floor(s / 60) + ':' + pad(s % 60) }
+// 剩 >40 秒平常；≤40 金；≤20 橙；≤10 红闪；刚进新一轮的头 3 秒绿色「该放了」
+function buffLevel(b) {
+  if (!b.at) return 'off'
+  const n = buffNow(b)
+  if (n.round > 0 && n.inRound < 3000) return 'now'
+  const s = n.left / 1000
+  return s <= 10 ? 'crit' : s <= 20 ? 'hot' : s <= 40 ? 'warn' : 'calm'
+}
+function buffHTML() {
+  const b = buffState()
+  const set = UI.buffSet || !localStorage.getItem(BUFF_KEY)   // 头一次用直接展开设置
+  const n = b.at ? buffNow(b) : null
+  const lv = buffLevel(b)
+  const needTap = b.at && !b.mute && !(Buff.ctx && Buff.ctx.state === 'running')
+  const row = `<div class="buff ${lv}" id="buff">
+      <span class="buff-n">${esc(b.name)}<small class="en">${fmtMS(b.cd * 1000)}</small></span>
+      <span class="buff-t en" id="buff-t">${n ? (lv === 'now' ? '该放了' : fmtMS(n.left)) : '—'}</span>
+      <span class="buff-bar"><i id="buff-i" style="width:${n ? (n.left / n.cd * 100).toFixed(1) : 0}%"></i></span>
+      <button class="btn tiny ${b.at ? '' : 'primary'}" id="bf-cast">放了</button>
+      ${b.at ? '<button class="btn tiny" id="bf-stop">停</button>' : ''}
+      <button class="btn tiny ghost" id="bf-snd" title="${b.mute ? '现在静音，点一下开声音' : '点一下静音'}">${b.mute ? '🔇' : '🔊'}</button>
+      <button class="btn tiny ghost" id="bf-set">${set ? '收起' : '设置'}</button>
+    </div>
+    ${needTap ? '<div class="hint buff-tap">刷新过页面，浏览器要点一下才肯出声 —— 点页面任意地方就行</div>' : ''}`
+  const form = set ? `<div class="buff-form">
+      <div class="field" style="flex:1 1 120px"><label>技能名</label><input type="text" id="bf-name" value="${esc(b.name)}"></div>
+      <div class="field" style="flex:0 0 74px;min-width:74px"><label>CD 分</label><input type="text" inputmode="numeric" class="numin" id="bf-m" value="${Math.floor(b.cd / 60)}"></div>
+      <div class="field" style="flex:0 0 74px;min-width:74px"><label>秒</label><input type="text" inputmode="numeric" class="numin" id="bf-s" value="${b.cd % 60}"></div>
+      <button class="btn tiny primary" id="bf-save">保存</button>
+      <span class="buff-ago">已经放了 <input type="text" inputmode="numeric" class="numin" id="bf-ago" value="0"> 秒
+        <button class="btn tiny" id="bf-cast-ago">从那时算</button></span>
+    </div>` : ''
+  return row + form
+}
+// 每 250ms 只改倒数的字、条和颜色，不整页重绘（免得练级的输入框失焦）
+function buffPaint() {
+  const el = document.getElementById('buff')
+  if (!el) return
+  const b = buffState()
+  if (!b.at) return
+  const n = buffNow(b), lv = buffLevel(b)
+  if (!el.classList.contains(lv)) { el.classList.remove('calm', 'warn', 'hot', 'crit', 'now', 'off'); el.classList.add(lv) }
+  const t = document.getElementById('buff-t'), i = document.getElementById('buff-i')
+  if (t) t.textContent = lv === 'now' ? '该放了' : fmtMS(n.left)
+  if (i) i.style.width = (n.left / n.cd * 100).toFixed(1) + '%'
+  buffSchedule()   // 顺手把 10 分钟之后的声音续上
+}
+setInterval(buffPaint, 250)
+// 刷新后音频是关着的；用户点页面任意地方时把它打开、重新排上声音
+document.addEventListener('pointerdown', () => {
+  const b = buffState()
+  if (!b.at || b.mute || (Buff.ctx && Buff.ctx.state === 'running')) return
+  buffAudio().then(() => {
+    buffSchedule()
+    const tip = document.querySelector('.buff-tap'); if (tip) tip.remove()
+  })
+}, true)
 
 /* ── 秒针：只改时钟文字，不整页重绘，免得输入框失焦 ── */
 let tickTimer = null

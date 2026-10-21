@@ -210,6 +210,20 @@
 - 单位切到「经验值」时不带 `.pctin`，按整数输入
 - 所有数字框带 `.numin`：聚焦时光标自动落到末尾
 
+## 增益技能倒计时（buff）
+- 一个技能、一个 CD（用户选的「就一个」），在计时器状态条和经验输入框之间（`buffHTML()`），
+  练级记经验时同一眼能看到。按「放了」= 从现在开始；设置里能补「已经放了 N 秒」
+- **到 0 自动进入下一轮**（`buffNow()` 用取模算），放晚了再按一次「放了」重新对齐
+- 剩 40 / 30 / 20 / 10 秒提示音，到 0 换三连音；颜色 calm → warn(≤40 金) → hot(≤20 橙) → crit(≤10 红闪)
+  → now（新一轮头 3 秒，绿闪「该放了」；手动按「放了」那一轮不显示）
+- ⚠️ **声音提前排进 Web Audio 时间轴，不靠 setInterval 响**：窗口被游戏挡住/切后台时定时器会被放慢
+  （严重时一分钟一跑），提醒会晚到甚至没了。`buffSchedule()` 一次排 10 分钟（`BUFF_AHEAD`），
+  每次画面刷新顺手续上，`Buff.until` 记排到哪，不会重复排
+- 取消已排的声音用 `gain.disconnect()`，不要再调 `osc.stop()`（有的浏览器重复 stop 会抛）
+- 浏览器不让没点过的页面出声：刷新后提示「点一下」，`pointerdown` 时打开音频并重排
+- 状态存 localStorage `mls_buff` = { name, cd(秒), at(epoch|null), mute }，**纯本机不上云**
+- 画面 250ms 刷一次，只改字/条/class，不整页重绘（免得输入框失焦）
+
 ## 计时器数据结构
 - `c.timer` = { state:'running'|'paused', startedAt, accumMs, points:[{ms, level, exp, map, mult, at}] }
   - `mult` 是经验倍率（1 / 1.5 / 2 / 3 / 4），和 `map` 一样描述「接下来这段」
