@@ -1652,7 +1652,7 @@ function tmStop() {
 
 /* ───────────────── 增益技能倒计时 ─────────────────
    一个技能、一个 CD，按「放了」从现在开始倒数，到 0 自动进入下一轮。
-   剩 40 / 30 / 20 / 10 秒各「嘀」一声，越近越急（金 → 橙 → 红闪），到 0 换一个提示音。
+   剩 40 / 30 / 20 / 10 秒分别「嘀」1 / 2 / 3 / 4 下，越近越急（金 → 橙 → 红闪），到 0 换一个提示音。
 
    声音**不靠 setInterval 去响**：浏览器窗口被游戏挡住或切到后台时，定时器会被放慢，
    严重时一分钟才跑一次，「剩 10 秒」会晚到甚至没了。所以「放了」那一刻就把接下来
@@ -1699,14 +1699,15 @@ function buffTone(ctx, t, freq, dur, vol = 0.05) {
   o.start(t); o.stop(t + dur + 0.01)
   Buff.nodes.push({ g, end: t + dur })
 }
+// 剩几秒就「嘀」几下：40→1、30→2、20→3、10→4 —— 不用看屏幕，数声音就知道还剩多久。
+// 每下都短促、小声、同一个音高，靠下数区分
+const BUFF_BEEPS = { 40: 1, 30: 2, 20: 3, 10: 4 }
 function buffSound(ctx, t, sec) {
-  if (sec === 0) {                       // 到 0：三连音往上走，和前面的「嘀」一听就分得开
-    buffTone(ctx, t, 784, 0.09); buffTone(ctx, t + 0.11, 988, 0.09); buffTone(ctx, t + 0.22, 1319, 0.16)
-  } else if (sec === 10) {               // 最后 10 秒：两声，高一点
-    buffTone(ctx, t, 988, 0.08); buffTone(ctx, t + 0.13, 988, 0.08)
-  } else {                               // 40 / 30 / 20：一声
-    buffTone(ctx, t, 659, 0.09)
+  if (sec === 0) {                       // 到 0：三个音往上走，和前面同音高的「嘀」一听就分得开
+    buffTone(ctx, t, 784, 0.08, 0.04); buffTone(ctx, t + 0.1, 988, 0.08, 0.04); buffTone(ctx, t + 0.2, 1319, 0.14, 0.04)
+    return
   }
+  for (let i = 0; i < (BUFF_BEEPS[sec] || 1); i++) buffTone(ctx, t + i * 0.11, 880, 0.05, 0.03)
 }
 // 取消已经排好、还没播的声音：断开音量节点就静音了（不再调 stop()，有的浏览器重复 stop 会抛错）
 function buffClearSounds() {
