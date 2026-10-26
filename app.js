@@ -1472,8 +1472,8 @@ function timerPanel(c) {
        </div>
        ${chartHTML(pts)}`
     : (state === 'idle'
-      ? `<div class="hint" style="margin-top:8px">填好当前等级和经验，按「开始」。中途随时「记一笔」，暂停也会自动记一笔。开始后按 <b>空格</b> 暂停 / 继续。暂停中「记一笔」是修正暂停那一刻的读数，不会多出一段。</div>`
-      : `<div class="hint" style="margin-top:8px">已经记了起点。再「记一笔」就能算出效率了。按 <b>空格</b> 暂停 / 继续。</div>`)
+      ? `<div class="hint" style="margin-top:8px">填好当前等级和经验，按「开始」（或在经验框里按<b>回车</b>）。中途随时「记一笔」—— 经验框里敲完数字按<b>回车</b>也行，暂停也会自动记一笔。开始后按 <b>空格</b> 暂停 / 继续。暂停中「记一笔」是修正暂停那一刻的读数，不会多出一段。</div>`
+      : `<div class="hint" style="margin-top:8px">已经记了起点。再「记一笔」就能算出效率了 —— 经验框里敲完数字按<b>回车</b>就是记一笔。按 <b>空格</b> 暂停 / 继续。</div>`)
 
   return `<section class="panel">
     <div class="panel-t">练级计时器${pts.length ? `<span class="sub">${pts.length} 个打点</span>` : ''}</div>
@@ -1949,6 +1949,23 @@ window.addEventListener('resize', () => {
   if (UI.tab !== 'log' || !S.chars.length) return
   clearTimeout(resizeTimer)
   resizeTimer = setTimeout(render, 200)
+})
+
+/* ── 计时器的等级 / 经验框里按回车 = 记一笔（还没开始就 = 开始） ──
+   练级时手在键盘上：敲四位数 → 回车 → 再敲 → 回车，不用挪鼠标去点按钮。
+   记完整页会重画，输入框会失焦，所以重画后把光标放回经验框末尾，接着敲就行
+   （百分比框超出 4 位会滚动，不用先清空）。 */
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.isComposing) return           // 中文输入法选字时的回车不算
+  const id = e.target && e.target.id
+  if (id !== 'tm-exp' && id !== 'tm-lv') return
+  const c = activeChar()
+  if (!c) return
+  e.preventDefault()
+  if (!c.timer) tmStart()
+  else tmMark()
+  const el = document.getElementById('tm-exp')
+  if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n) } catch (_) { /* 忽略 */ } }
 })
 
 /* ── 空格键：暂停 / 继续 ── */
