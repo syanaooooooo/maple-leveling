@@ -1770,11 +1770,13 @@ function buffSave() {
 
 /* ── 画面 ── */
 const fmtMS = ms => { const s = Math.ceil(ms / 1000); return Math.floor(s / 60) + ':' + pad(s % 60) }
-// 剩 >40 秒平常；≤40 金；≤20 橙；≤10 红闪；刚进新一轮的头 3 秒绿色「该放了」
+// 剩 >40 秒平常；≤40 金；≤20 橙；≤10 红闪；自动进入新一轮的头 2 秒绿闪一下。
+// ⚠️ 绿闪时**数字照常倒数**，不要换成「该放了」之类的字：以前这么写过，
+// 用户以为倒计时停住了、要手动点「放了」才会开始下一轮（其实早就自动开始了）
 function buffLevel(b) {
   if (!b.at) return 'off'
   const n = buffNow(b)
-  if (n.round > 0 && n.inRound < 3000) return 'now'
+  if (n.round > 0 && n.inRound < 2000) return 'now'
   const s = n.left / 1000
   return s <= 10 ? 'crit' : s <= 20 ? 'hot' : s <= 40 ? 'warn' : 'calm'
 }
@@ -1786,7 +1788,7 @@ function buffHTML() {
   const needTap = b.at && !b.mute && !(Buff.ctx && Buff.ctx.state === 'running')
   const row = `<div class="buff ${lv}" id="buff">
       <span class="buff-n">${esc(b.name)}<small class="en">${fmtMS(b.cd * 1000)}</small></span>
-      <span class="buff-t en" id="buff-t">${n ? (lv === 'now' ? '该放了' : fmtMS(n.left)) : '—'}</span>
+      <span class="buff-t en" id="buff-t">${n ? fmtMS(n.left) : '—'}</span>
       <span class="buff-bar"><i id="buff-i" style="width:${n ? (n.left / n.cd * 100).toFixed(1) : 0}%"></i></span>
       <button class="btn tiny ${b.at ? '' : 'primary'}" id="bf-cast">放了</button>
       ${b.at ? '<button class="btn tiny" id="bf-stop">停</button>' : ''}
@@ -1814,7 +1816,7 @@ function buffPaintIn(doc) {
   const n = b.at ? buffNow(b) : null, lv = buffLevel(b)
   if (!el.classList.contains(lv)) { el.classList.remove('calm', 'warn', 'hot', 'crit', 'now', 'off'); el.classList.add(lv) }
   const t = doc.getElementById('buff-t'), i = doc.getElementById('buff-i')
-  if (t) t.textContent = !n ? '—' : lv === 'now' ? '该放了' : fmtMS(n.left)
+  if (t) t.textContent = n ? fmtMS(n.left) : '—'
   if (i) i.style.width = (n ? n.left / n.cd * 100 : 0).toFixed(1) + '%'
 }
 function buffPaint() {
@@ -1822,6 +1824,9 @@ function buffPaint() {
   buffSchedule()   // 顺手把 10 分钟之后的声音续上
 }
 setInterval(buffPaint, 250)
+// 页面在后台时浏览器会把刷新放慢，切回来的那一刻立刻补画一次，不让人看到过时的状态
+document.addEventListener('visibilitychange', () => { if (!document.hidden) buffPaint() })
+window.addEventListener('focus', buffPaint)
 
 /* ── 小窗：看视频时也能看到倒计时 ──
    Chrome / Edge 用「画中画」窗口（documentPictureInPicture）：浮在所有窗口最上面，视频播放器也盖得住。
@@ -1888,6 +1893,9 @@ function buffSetupMini(w) {
     buffSchedule()
   }, 250)
   w.addEventListener('pagehide', () => w.clearInterval(timer))
+  const repaint = () => buffPaintIn(d)
+  w.addEventListener('focus', repaint)
+  d.addEventListener('visibilitychange', () => { if (!d.hidden) repaint() })
 }
 // 刷新后音频是关着的；用户点页面任意地方时把它打开、重新排上声音
 document.addEventListener('pointerdown', () => {
